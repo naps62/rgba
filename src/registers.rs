@@ -22,6 +22,23 @@ pub enum Register16 {
   PC,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum RegisterAny {
+  A,
+  B,
+  C,
+  D,
+  E,
+  H,
+  L,
+  AF,
+  BC,
+  DE,
+  HL,
+  SP,
+  PC,
+}
+
 #[derive(Debug)]
 #[allow(non_snake_case)]
 pub struct Registers {
