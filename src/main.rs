@@ -1,10 +1,8 @@
 mod cpu;
-mod opcodes;
-mod registers;
 
+use cpu::opcodes::{Arg::*, Instruction::*};
+use cpu::registers::Register8;
 use cpu::CPU;
-use opcodes::{Arg::*, Instruction::*};
-use registers::Register8;
 
 fn main() {
   let cpu = CPU::new();

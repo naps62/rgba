@@ -1,4 +1,9 @@
-use crate::registers::{Register16, Register8};
+//
+// should be derived from
+// http://goldencrystal.free.fr/GBZ80Opcodes.pdf
+//
+
+use super::registers::{Register16, Register8};
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]

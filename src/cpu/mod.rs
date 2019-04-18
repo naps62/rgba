@@ -1,5 +1,8 @@
-use crate::opcodes::Instruction;
-use crate::registers::Registers;
+pub mod opcodes;
+pub mod registers;
+
+use opcodes::Instruction;
+use registers::Registers;
 
 pub struct CPU {
   registers: Registers,
@@ -18,7 +21,7 @@ impl CPU {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::registers::Register16;
+  use registers::Register16;
 
   #[test]
   fn new_cpu() {
