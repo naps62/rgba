@@ -1,6 +1,13 @@
 type Reg8x2 = (u8, u8);
 type Reg16 = u16;
 
+pub enum Flag {
+  ZF = 7, // zero flag
+  NF = 6, // add/sub flag
+  HF = 5, // half-carry flag
+  CF = 4, // carry flag
+}
+
 #[derive(Debug, PartialEq)]
 pub enum Register8 {
   A,
@@ -115,6 +122,25 @@ impl Registers {
       PC => self.PC = value,
     }
   }
+
+  pub fn get_flag(&self, flag: Flag) -> u8 {
+    let flag_index = flag as u8;
+    let mask = (1 as u8) << flag_index;
+
+    (self.AF.1 & mask) >> flag_index
+  }
+
+  pub fn set_flag(&mut self, flag: Flag, value: u8) {
+    if value == 0 {
+      let mask = !((1 as u8) << (flag as u8));
+
+      self.AF.1 = self.AF.1 & mask;
+    } else {
+      let mask = (1 as u8) << (flag as u8);
+
+      self.AF.1 = self.AF.1 | mask;
+    }
+  }
 }
 
 fn reg8x2_to_reg16(reg: Reg8x2) -> Reg16 {
@@ -128,11 +154,14 @@ fn reg16_to_reg8x2(reg: Reg16) -> Reg8x2 {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use Flag::*;
   use Register16::*;
   use Register8::*;
 
   #[test]
   fn initialize() {
+    use Register16::*;
+
     let registers = Registers::new();
 
     assert_eq!(registers.AF.0, 0);
@@ -212,5 +241,50 @@ mod tests {
     assert_eq!(registers.read16(HL), 65_532);
     assert_eq!(registers.read16(SP), 65_531);
     assert_eq!(registers.read16(PC), 65_530);
+  }
+
+  #[test]
+  fn zf_flag() {
+    let mut registers = Registers::new();
+
+    assert_eq!(registers.get_flag(ZF), 0);
+    registers.set_flag(ZF, 1);
+    assert_eq!(registers.get_flag(ZF), 1);
+    assert_eq!(registers.read16(AF), 128);
+    registers.set_flag(ZF, 0);
+    assert_eq!(registers.get_flag(ZF), 0);
+  }
+
+  #[test]
+  fn nf_flag() {
+    let mut registers = Registers::new();
+
+    assert_eq!(registers.get_flag(NF), 0);
+    registers.set_flag(NF, 1);
+    assert_eq!(registers.get_flag(NF), 1);
+    assert_eq!(registers.read16(AF), 64);
+    registers.set_flag(NF, 0);
+    assert_eq!(registers.get_flag(NF), 0);
+  }
+
+  fn hf_flag() {
+    let mut registers = Registers::new();
+
+    assert_eq!(registers.get_flag(HF), 0);
+    registers.set_flag(HF, 1);
+    assert_eq!(registers.get_flag(HF), 1);
+    assert_eq!(registers.read16(AF), 32);
+    registers.set_flag(HF, 0);
+    assert_eq!(registers.get_flag(HF), 0);
+  }
+  #[test]
+  fn cf_flag() {
+    let mut registers = Registers::new();
+    assert_eq!(registers.get_flag(CF), 0);
+    registers.set_flag(CF, 1);
+    assert_eq!(registers.get_flag(CF), 1);
+    assert_eq!(registers.read16(AF), 16);
+    registers.set_flag(CF, 0);
+    assert_eq!(registers.get_flag(CF), 0);
   }
 }
