@@ -8,7 +8,7 @@ impl Memory {
   }
 
   pub fn read8(&self, index: u8) -> u8 {
-    // 0
+    0
     // self.mem[index]
   }
 

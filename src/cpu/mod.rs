@@ -2,8 +2,8 @@ pub mod opcodes;
 pub mod registers;
 
 use super::memory::Memory;
-use opcodes::Instruction;
-use registers::{Register16, Registers};
+use opcodes::{Instruction, Register16};
+use registers::Registers;
 
 pub struct CPU {
   registers: Registers,
@@ -30,7 +30,6 @@ impl CPU {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use registers::Register16;
 
   #[test]
   fn new_cpu() {

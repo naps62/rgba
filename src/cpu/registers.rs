@@ -8,43 +8,7 @@ pub enum Flag {
   CF = 4, // carry flag
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Register8 {
-  A,
-  B,
-  C,
-  D,
-  E,
-  H,
-  L,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Register16 {
-  AF,
-  BC,
-  DE,
-  HL,
-  SP,
-  PC,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum RegisterAny {
-  A,
-  B,
-  C,
-  D,
-  E,
-  H,
-  L,
-  AF,
-  BC,
-  DE,
-  HL,
-  SP,
-  PC,
-}
+use super::opcodes::{Register16, Register8};
 
 #[derive(Debug)]
 #[allow(non_snake_case)]
@@ -160,8 +124,6 @@ mod tests {
 
   #[test]
   fn initialize() {
-    use Register16::*;
-
     let registers = Registers::new();
 
     assert_eq!(registers.AF.0, 0);

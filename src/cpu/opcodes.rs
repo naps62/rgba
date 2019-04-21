@@ -3,7 +3,26 @@
 // http://goldencrystal.free.fr/GBZ80Opcodes.pdf
 //
 
-use super::registers::{Register16, Register8};
+#[derive(Debug, PartialEq)]
+pub enum Register8 {
+  A,
+  B,
+  C,
+  D,
+  E,
+  H,
+  L,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Register16 {
+  AF,
+  BC,
+  DE,
+  HL,
+  SP,
+  PC,
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
