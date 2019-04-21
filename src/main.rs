@@ -1,13 +1,13 @@
+mod cartridge;
 mod cpu;
+mod display;
+mod game_boy;
+mod memory;
 
-use cpu::opcodes::{Arg::*, Instruction::*};
-use cpu::registers::Register8;
-use cpu::CPU;
+use game_boy::GameBoy;
 
 fn main() {
-  let cpu = CPU::new();
-
-  cpu.exec(I_LD(R8(Register8::A), R8(Register8::B)));
+  let game_boy = GameBoy::new();
 
   println!("Hello")
 }

@@ -1,9 +1,8 @@
-mod memory;
 pub mod opcodes;
 pub mod registers;
 
+use super::memory::Memory;
 use opcodes::Instruction;
-use ram::RAM;
 use registers::{Register16, Registers};
 
 pub struct CPU {
@@ -19,7 +18,7 @@ impl CPU {
     }
   }
 
-  pub fn exec(&self, _instr: Instruction) {
+  pub fn exec(&mut self, _instr: Instruction) {
     let current_pc = self.registers.read16(Register16::PC);
 
     let new_pc = current_pc;

@@ -1,19 +1,19 @@
-struct Memory {
+pub struct Memory {
   mem: Vec<u8>,
 }
+
 impl Memory {
-  pub fn new(size: u8) -> Memory {
-    Memory {
-      mem: vec![0; 8 * 1024],
-    }
+  pub fn new(size: usize) -> Memory {
+    Memory { mem: vec![0; size] }
   }
 
   pub fn read8(&self, index: u8) -> u8 {
-    self.mem[index]
+    // 0
+    // self.mem[index]
   }
 
   pub fn write8(&mut self, index: u8, value: u8) {
-    self.mem[index] = value;
+    // self.mem[index] = value;
   }
 }
 
@@ -34,7 +34,7 @@ mod tests {
   fn write8() {
     let mut memory = Memory::new(1);
 
-    memory(0, 255);
+    memory.write8(0, 255);
 
     assert_eq!(memory.mem[0], 255);
   }
