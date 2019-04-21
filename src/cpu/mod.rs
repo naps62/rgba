@@ -1,6 +1,6 @@
-mod opcodes;
-mod ram;
-mod registers;
+mod memory;
+pub mod opcodes;
+pub mod registers;
 
 use opcodes::Instruction;
 use ram::RAM;
@@ -8,14 +8,14 @@ use registers::{Register16, Registers};
 
 pub struct CPU {
   registers: Registers,
-  ram: RAM,
+  ram: Memory,
 }
 
 impl CPU {
   pub fn new() -> CPU {
     CPU {
       registers: Registers::new(),
-      ram: RAM::new(),
+      ram: Memory::new(8 * 1024),
     }
   }
 
