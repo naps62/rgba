@@ -3,26 +3,7 @@
 // http://goldencrystal.free.fr/GBZ80Opcodes.pdf
 //
 
-#[derive(Debug, PartialEq)]
-pub enum Register8 {
-  A,
-  B,
-  C,
-  D,
-  E,
-  H,
-  L,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Register16 {
-  AF,
-  BC,
-  DE,
-  HL,
-  SP,
-  PC,
-}
+use super::registers::{Register16, Register8};
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
@@ -35,7 +16,7 @@ pub enum Arg {
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq)]
-pub enum Instruction {
+pub enum OpCode {
   I_NOP,
   I_HALT,
   I_LD(Arg, Arg),
@@ -51,11 +32,11 @@ pub enum Instruction {
 }
 
 use Arg::*;
-use Instruction::*;
+use OpCode::*;
 use Register16::*;
 use Register8::*;
 
-pub fn decode(opcode: u8) -> Instruction {
+pub fn decode(opcode: u8) -> OpCode {
   match opcode {
     0x76 => I_HALT,
     0x00 => I_NOP,
