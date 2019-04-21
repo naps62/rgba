@@ -8,7 +8,7 @@ pub enum Flag {
   CF = 4, // carry flag
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Register8 {
   A,
   B,
@@ -19,7 +19,7 @@ pub enum Register8 {
   L,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Register16 {
   AF,
   BC,
