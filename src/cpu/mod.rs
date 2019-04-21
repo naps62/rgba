@@ -135,125 +135,127 @@ impl CPU {
 
         pc + 2
       }
+      // RdCA
+      _ if opcode_match(opcode, 0b1111_0111, 0b0000_0111) => {
+        self.exec_rotate(R8(A), (opcode & 0x08) >> 3);
+
+        pc + 1
+      }
       // TODO
 
-      // RdCA
-      _ if opcode_match(opcode, 0b1111_0111, 0b0000_0111) => pc + 1,
+      // // RdA
+      // _ if opcode_match(opcode, 0b1111_0111, 0b0001_0111) => pc + 1,
 
-      // RdA
-      _ if opcode_match(opcode, 0b1111_0111, 0b0001_0111) => pc + 1,
+      // // STOP
+      // 0x10 => pc + 1,
 
-      // STOP
-      0x10 => pc + 1,
+      // // JR N
+      // 0x18 => pc + 2,
 
-      // JR N
-      0x18 => pc + 2,
+      // // JR F, N
+      // _ if opcode_match(opcode, 0b1110_0111, 0b0010_0000) => pc + 2,
 
-      // JR F, N
-      _ if opcode_match(opcode, 0b1110_0111, 0b0010_0000) => pc + 2,
+      // // LDI (HL), A
+      // 0x22 => pc + 1,
 
-      // LDI (HL), A
-      0x22 => pc + 1,
+      // // LDI A, (HL)
+      // 0x2a => pc + 1,
 
-      // LDI A, (HL)
-      0x2a => pc + 1,
+      // // LDD (HL), A
+      // 0x32 => pc + 1,
 
-      // LDD (HL), A
-      0x32 => pc + 1,
+      // // LDD A, (HL)
+      // 0x3a => pc + 1,
 
-      // LDD A, (HL)
-      0x3a => pc + 1,
+      // // DAA
+      // 0x27 => pc + 1,
 
-      // DAA
-      0x27 => pc + 1,
+      // // CPL
+      // 0x2f => pc + 1,
 
-      // CPL
-      0x2f => pc + 1,
+      // // SCF
+      // 0x37 => pc + 1,
 
-      // SCF
-      0x37 => pc + 1,
+      // // CCF
+      // 0x3f => pc + 1,
 
-      // CCF
-      0x3f => pc + 1,
+      // // LD D, D
+      // _ if opcode_match(opcode, 0b1100_0000, 0b0100_0000) => pc + 1,
 
-      // LD D, D
-      _ if opcode_match(opcode, 0b1100_0000, 0b0100_0000) => pc + 1,
+      // // HALT
+      // 0x74 => pc + 1,
 
-      // HALT
-      0x74 => pc + 1,
+      // // ALU A, D
+      // _ if opcode_match(opcode, 0b1100_0000, 0b1000_0000) => pc + 1,
 
-      // ALU A, D
-      _ if opcode_match(opcode, 0b1100_0000, 0b1000_0000) => pc + 1,
+      // // ALU A, N
+      // _ if opcode_match(opcode, 0b1100_0111, 0b1100_0110) => pc + 2,
 
-      // ALU A, N
-      _ if opcode_match(opcode, 0b1100_0111, 0b1100_0110) => pc + 2,
+      // // POP R
+      // _ if opcode_match(opcode, 0b1100_1111, 0b1100_0001) => pc + 2,
 
-      // POP R
-      _ if opcode_match(opcode, 0b1100_1111, 0b1100_0001) => pc + 2,
+      // // PUSH R
+      // _ if opcode_match(opcode, 0b1100_1111, 0b1100_0101) => pc + 2,
 
-      // PUSH R
-      _ if opcode_match(opcode, 0b1100_1111, 0b1100_0101) => pc + 2,
+      // // RST N
+      // _ if opcode_match(opcode, 0b1100_0111, 0b1100_0111) => pc + 1,
 
-      // RST N
-      _ if opcode_match(opcode, 0b1100_0111, 0b1100_0111) => pc + 1,
+      // // RET F
+      // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0000) => pc + 1,
 
-      // RET F
-      _ if opcode_match(opcode, 0b1110_0111, 0b1100_0000) => pc + 1,
+      // // RET
+      // 0xc9 => pc + 1,
 
-      // RET
-      0xc9 => pc + 1,
+      // // RETI
+      // 0xd9 => pc + 1,
 
-      // RETI
-      0xd9 => pc + 1,
+      // // JP F, N
+      // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0010) => pc + 3,
 
-      // JP F, N
-      _ if opcode_match(opcode, 0b1110_0111, 0b1100_0010) => pc + 3,
+      // // JP N
+      // 0xc3 => pc + 3,
 
-      // JP N
-      0xc3 => pc + 3,
+      // // CALL F, N
+      // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0100) => pc + 3,
 
-      // CALL F, N
-      _ if opcode_match(opcode, 0b1110_0111, 0b1100_0100) => pc + 3,
+      // // CALL N
+      // 0xcd => pc + 3,
 
-      // CALL N
-      0xcd => pc + 3,
+      // // ADD SP, N
+      // 0xe8 => pc + 2,
 
-      // ADD SP, N
-      0xe8 => pc + 2,
+      // // LD HL, SP + N
+      // 0xf8 => pc + 2,
 
-      // LD HL, SP + N
-      0xf8 => pc + 2,
+      // // LD (FF00+N), A
+      // 0xe0 => pc + 2,
 
-      // LD (FF00+N), A
-      0xe0 => pc + 2,
+      // // LD A, (FF00+N)
+      // 0xf0 => pc + 2,
 
-      // LD A, (FF00+N)
-      0xf0 => pc + 2,
+      // // LD (C), A
+      // 0xe2 => pc + 1,
 
-      // LD (C), A
-      0xe2 => pc + 1,
+      // // LD A, (C)
+      // 0xf2 => pc + 1,
 
-      // LD A, (C)
-      0xf2 => pc + 1,
+      // // LD (N), A
+      // 0xe6 => pc + 3,
 
-      // LD (N), A
-      0xe6 => pc + 3,
+      // // LD A, (N)
+      // 0xf6 => pc + 3,
 
-      // LD A, (N)
-      0xf6 => pc + 3,
+      // // JP HL
+      // 0xe9 => pc + 1,
+      // // LD SP, HL
+      // 0xf9 => pc + 1,
+      // // DI
+      // 0xf3 => pc + 1,
+      // // EI
+      // 0xfb => pc + 1,
 
-      // JP HL
-      0xe9 => pc + 1,
-      // LD SP, HL
-      0xf9 => pc + 1,
-      // DI
-      0xf3 => pc + 1,
-      // EI
-      0xfb => pc + 1,
-
-      // read instr from byte 2
-      0xcb => pc + 2,
-
+      // // read instr from byte 2
+      // 0xcb => pc + 2,
       _ => self.i_unknown(opcode),
     }
   }
@@ -297,6 +299,28 @@ impl CPU {
       (R16(reg), -1) => self.registers.write16(reg, self.registers.read16(reg) - 1),
 
       _ => panic!("Can't handle INC/DEC opcode argument {:?}", dest),
+    }
+  }
+
+  fn exec_rotate(&mut self, dest: Arg, direction: u8) {
+    match dest {
+      R8(reg) => self
+        .registers
+        .write8(reg, self.rotate_n(self.registers.read8(reg), direction)),
+
+      _ => panic!(
+        "Can't handle RdCA/RdA opcode argument {:?} (direction: {})",
+        dest, direction
+      ),
+    }
+  }
+
+  fn rotate_n(&self, n: u8, direction: u8) -> u8 {
+    match direction {
+      1 => n >> 1,
+      0 => n << 1,
+
+      _ => panic!("Can't handle rotation direction: {}", direction),
     }
   }
 
@@ -629,5 +653,37 @@ mod tests {
     cpu.ram.write8(15, 8);
     cpu.exec();
     assert_eq!(cpu.registers.read8(A), 8);
+  }
+
+  #[test]
+  fn opcode_rdca() {
+    let mut cpu = CPU::new();
+
+    // RLCA
+    cpu.registers.write8(A, 2);
+    cpu.ram.write8(0, 0b0000_0111);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(A), 4);
+
+    // RRCA
+    cpu.registers.write8(A, 4);
+    cpu.ram.write8(1, 0b0000_1111);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(A), 2);
+  }
+
+  #[test]
+  fn opcode_rdca_flags() {
+    panic!("Not yet implemented");
+  }
+
+  #[test]
+  fn opcode_rda() {
+    panic!("Not yet implemented");
+  }
+
+  #[test]
+  fn opcode_rda_flags() {
+    panic!("Not yet implemented");
   }
 }
