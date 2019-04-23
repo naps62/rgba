@@ -318,35 +318,34 @@ impl CPU {
   }
 
   fn exec_inc(&mut self, dest: Arg, inc: i16) -> u32 {
-    match dest {
-      R16(reg) => {
-        let n = self.registers.read16(reg);
+    match (dest, inc) {
+      // (R16(reg), 1) => {
+      //   let n = self.registers.read16(reg);
 
-        self.registers.write16(reg, n + inc);
+      //   self.registers.write16(reg, n + inc);
 
-        n as u32
-      }
+      //   n as u32
+      // }
 
-      R8(reg) => {
-        let n = self.registers.read8(reg);
+      // R8(reg) => {
+      //   let n = self.registers.read8(reg);
 
-        self.registers.write8(reg, n + inc);
+      //   self.registers.write8(reg, n + inc);
 
-        n as u32
-      }
+      //   n as u32
+      // }
 
-      Ptr_R16(reg) => {
-        let addr = self.registers.read16(reg);
+      // Ptr_R16(reg) => {
+      //   let addr = self.registers.read16(reg);
 
-        let n = self.ram.read8(addr);
+      //   let n = self.ram.read8(addr);
 
-        self.ram.write8(addr, n + inc);
+      //   self.ram.write8(addr, n + inc);
 
-        // self.registers.write8(reg, n + inc);
+      //   // self.registers.write8(reg, n + inc);
 
-        n as u32
-      }
-
+      //   n as u32
+      // }
       _ => panic!("Can't handle INC/DEC opcode argument {:?}", dest),
     }
   }
