@@ -3,6 +3,7 @@ pub mod registers;
 
 use super::memory::Memory;
 use registers::{Flag, Register16, Register8, Registers};
+use std::num::Wrapping;
 
 use Flag::*;
 use Register16::*;
@@ -50,6 +51,8 @@ impl CPU {
       0x00 => pc + 1,
 
       // LD (N), SP
+      // no flags affected
+      // DONE
       0x08 => {
         self.exec_ld(Ptr(self.read_arg16() as usize), R16(SP));
 
@@ -57,6 +60,8 @@ impl CPU {
       }
 
       // LD R, N
+      // no flags affected
+      // DONE
       _ if opcode_match(opcode, 0b_1100_1111, 0b0000_0001) => {
         let reg = R16(self.read_reg16((opcode & 0x30) >> 4, 0));
         let val = N16(self.read_arg16());
@@ -66,16 +71,22 @@ impl CPU {
       }
 
       // ADD HL, R
+      // all flags affected
+      // DONE
       _ if opcode_match(opcode, 0b1100_1111, 0b0000_1001) => {
         let reg1 = R16(HL);
         let reg2 = R16(self.read_reg16((opcode & 0x30) >> 4, 0));
-        self.exec_add(reg1, reg2);
+        let (n1, n2) = self.exec_add(reg1, reg2);
         self.registers.set_flag(NF, 0);
+        self.registers.set_flag(HF, self.overflow_at(n1, n2, 11));
+        self.registers.set_flag(CF, self.overflow_at(n1, n2, 15));
 
         pc + 1
       }
 
       // LD (R), A
+      // no flags affected
+      // DONE
       _ if opcode_match(opcode, 0b1110_1111, 0b0000_0010) => {
         let arg1 = Ptr_R16(self.read_reg16((opcode & 0x30) >> 4, 1));
         // let arg1 = Ptr_R16(reg1); self.registers.read16(reg1) as usize);
@@ -86,6 +97,8 @@ impl CPU {
       }
 
       // LD A, (R)
+      // no flags affected
+      // DONE
       _ if opcode_match(opcode, 0b1110_1111, 0b0000_1010) => {
         let arg1 = R8(A);
         let reg2 = self.read_reg16((opcode & 0x30) >> 4, 1);
@@ -96,6 +109,8 @@ impl CPU {
       }
 
       // INC R
+      // no flags affected
+      // DONE
       _ if opcode_match(opcode, 0b1100_1111, 0b0000_0011) => {
         let arg = R16(self.read_reg16((opcode & 0x30) >> 4, 0));
         self.exec_inc(arg, 1);
@@ -104,6 +119,8 @@ impl CPU {
       }
 
       // DEC R
+      // no flags affected
+      // DONE
       _ if opcode_match(opcode, 0b1100_1111, 0b0000_1011) => {
         let arg = R16(self.read_reg16((opcode & 0x30) >> 4, 0));
         self.exec_inc(arg, -1);
@@ -114,7 +131,10 @@ impl CPU {
       // INC D
       _ if opcode_match(opcode, 0b1100_0111, 0b0000_0100) => {
         let arg = self.read_reg8((opcode & 0x38) >> 3);
-        self.exec_inc(arg, 1);
+        let n = self.exec_inc(arg, 1);
+        self.registers.set_flag(ZF, if n + 1 == 0 { 1 } else { 2 });
+        self.registers.set_flag(NF, 0);
+        self.registers.set_flag(HF, self.overflow_at(n, 1, 3));
 
         pc + 1
       }
@@ -281,22 +301,51 @@ impl CPU {
     };
   }
 
-  fn exec_add(&mut self, dest: Arg, orig: Arg) {
+  fn exec_add(&mut self, dest: Arg, orig: Arg) -> (u32, u32) {
     match (dest, orig) {
-      (R16(reg1), R16(reg2)) => self.registers.write16(
-        reg1,
-        self.registers.read16(reg1) + self.registers.read16(reg2),
-      ),
+      (R16(reg1), R16(reg2)) => {
+        let (n1, n2) = (self.registers.read16(reg1), self.registers.read16(reg2));
+
+        self
+          .registers
+          .write16(reg1, (Wrapping(n1) + Wrapping(n2)).0);
+
+        (n1 as u32, n2 as u32)
+      }
 
       _ => panic!("Can't handle ADD opcode arguments {:?}", (dest, orig)),
     }
   }
 
-  fn exec_inc(&mut self, dest: Arg, inc: i16) {
-    match (dest, inc) {
-      (R16(reg), 1) => self.registers.write16(reg, self.registers.read16(reg) + 1),
+  fn exec_inc(&mut self, dest: Arg, inc: i16) -> u32 {
+    match dest {
+      R16(reg) => {
+        let n = self.registers.read16(reg);
 
-      (R16(reg), -1) => self.registers.write16(reg, self.registers.read16(reg) - 1),
+        self.registers.write16(reg, n + inc);
+
+        n as u32
+      }
+
+      R8(reg) => {
+        let n = self.registers.read8(reg);
+
+        self.registers.write8(reg, n + inc);
+
+        n as u32
+      }
+
+      Ptr_R16(reg) => {
+        let addr = self.registers.read16(reg);
+
+        let n = self.ram.read8(addr);
+
+        self.ram.write8(addr, n + inc);
+
+        // self.registers.write8(reg, n + inc);
+
+        n as u32
+      }
 
       _ => panic!("Can't handle INC/DEC opcode argument {:?}", dest),
     }
@@ -372,6 +421,17 @@ impl CPU {
       0x7 => R8(A),
 
       _ => panic!("Unkonwn R16 code: 0x{:x}", reg),
+    }
+  }
+
+  fn overflow_at(&self, n1: u32, n2: u32, index: u16) -> u8 {
+    let index_mask: u32 = 1 << index + 1;
+    let mask: u32 = index_mask - 1;
+
+    if ((n1 & mask) + (n2 & mask) & index_mask) == index_mask {
+      1
+    } else {
+      0
     }
   }
 }
@@ -492,7 +552,47 @@ mod tests {
 
   #[test]
   fn opcode_add_hl_r16_flags() {
-    panic!("Not yet implemented")
+    let mut cpu = CPU::new();
+
+    // carry from bit 11
+    cpu.registers.write16(HL, 0b0000_1000_0000_0000);
+    cpu.registers.write16(BC, 0b0000_1000_0000_0000);
+    cpu.ram.write8(0, 0x09);
+    cpu.exec();
+
+    assert_eq!(cpu.registers.get_flag(NF), 0);
+    assert_eq!(cpu.registers.get_flag(HF), 1);
+    assert_eq!(cpu.registers.get_flag(CF), 0);
+
+    // carry from bit 15
+    cpu.registers.write16(HL, 0b1000_0000_0000_0000);
+    cpu.registers.write16(BC, 0b1000_0000_0000_0000);
+    cpu.ram.write8(1, 0x09);
+    cpu.exec();
+
+    assert_eq!(cpu.registers.get_flag(NF), 0);
+    assert_eq!(cpu.registers.get_flag(HF), 0);
+    assert_eq!(cpu.registers.get_flag(CF), 1);
+
+    // carry from bit 11 and 15
+    cpu.registers.write16(HL, 0b1000_1000_0000_0000);
+    cpu.registers.write16(BC, 0b1000_1000_0000_0000);
+    cpu.ram.write8(2, 0x09);
+    cpu.exec();
+
+    assert_eq!(cpu.registers.get_flag(NF), 0);
+    assert_eq!(cpu.registers.get_flag(HF), 1);
+    assert_eq!(cpu.registers.get_flag(CF), 1);
+
+    // carry from bit 11 and 15 indirectly
+    cpu.registers.write16(HL, 0b1100_0100_0000_0000);
+    cpu.registers.write16(BC, 0b0100_1100_0000_0000);
+    cpu.ram.write8(2, 0x09);
+    cpu.exec();
+
+    assert_eq!(cpu.registers.get_flag(NF), 0);
+    assert_eq!(cpu.registers.get_flag(HF), 1);
+    assert_eq!(cpu.registers.get_flag(CF), 1);
   }
 
   #[test]
@@ -564,7 +664,7 @@ mod tests {
 
   #[test]
   fn opcode_inc_r16_flags() {
-    panic!("Not implemented yet");
+    // no flags touched
   }
 
   #[test]
@@ -598,7 +698,72 @@ mod tests {
 
   #[test]
   fn opcode_dec_r16_flags() {
-    panic!("Not implemented yet");
+    // no flags touched
+  }
+  #[test]
+  fn opcode_inc_r8() {
+    let mut cpu = CPU::new();
+
+    // INC B
+    cpu.registers.write8(B, 1);
+    cpu.ram.write8(0, 0x04);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(B), 2);
+
+    // INC C
+    cpu.registers.write8(C, 2);
+    cpu.ram.write8(1, 0x0c);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(C), 3);
+
+    // INC D
+    cpu.registers.write8(D, 3);
+    cpu.ram.write8(2, 0x14);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(D), 4);
+    // INC E
+    cpu.registers.write8(E, 4);
+    cpu.ram.write8(3, 0x1c);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(E), 5);
+    // INC H
+    cpu.registers.write8(H, 5);
+    cpu.ram.write8(4, 0x24);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(H), 6);
+    // INC L
+    cpu.registers.write8(L, 6);
+    cpu.ram.write8(5, 0x2c);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(L), 7);
+
+    // INC (HL)
+    cpu.registers.write16(HL, 7);
+    cpu.ram.write8(6, 0x34);
+    cpu.ram.write8(1023, 1);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(1023), 8);
+
+    // INC A
+    cpu.registers.write8(A, 8);
+    cpu.ram.write8(7, 0x3c);
+    cpu.exec();
+    assert_eq!(cpu.registers.read8(A), 9);
+  }
+
+  #[test]
+  fn opcode_inc_r8_flags() {
+    // no flags touched
+  }
+
+  #[test]
+  fn opcode_dec_r8() {
+    let mut cpu = CPU::new();
+  }
+
+  #[test]
+  fn opcode_dec_r8_flags() {
+    // no flags touched
   }
 
   #[test]
