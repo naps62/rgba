@@ -1005,9 +1005,160 @@ impl CPU {
       }
 
       // read instr from byte 2
-      // 0xcb => pc + 2,
+      0xCB => self.exec_cb(self.read_arg8(), pc),
+
       _ => self.i_unknown(opcode),
     }
+  }
+
+  fn exec_cb(&mut self, opcode: u8, pc: u16) -> u16 {
+    match opcode {
+      // RLC D
+      0b0000_0000 => {
+        let v = self.alu_rlc(self.regs.b());
+        self.regs.set_b(v);
+      }
+      0b0000_0001 => {
+        let v = self.alu_rlc(self.regs.c());
+        self.regs.set_c(v);
+      }
+      0b0000_0010 => {
+        let v = self.alu_rlc(self.regs.d());
+        self.regs.set_d(v);
+      }
+      0b0000_0011 => {
+        let v = self.alu_rlc(self.regs.e());
+        self.regs.set_e(v);
+      }
+      0b0000_0100 => {
+        let v = self.alu_rlc(self.regs.h());
+        self.regs.set_h(v);
+      }
+      0b0000_0101 => {
+        let v = self.alu_rlc(self.regs.l());
+        self.regs.set_l(v);
+      }
+      0b0000_0110 => {
+        let ptr = self.regs.hl() as usize;
+        let v = self.alu_rlc(self.ram.read8(ptr));
+        self.ram.write8(ptr, v);
+      }
+      0b0000_0111 => {
+        let v = self.alu_rlc(self.regs.a());
+        self.regs.set_a(v);
+      }
+
+      // RRC D
+      0b0000_1000 => {
+        let v = self.alu_rrc(self.regs.b());
+        self.regs.set_b(v);
+      }
+      0b0000_1001 => {
+        let v = self.alu_rrc(self.regs.c());
+        self.regs.set_c(v);
+      }
+      0b0000_1010 => {
+        let v = self.alu_rrc(self.regs.d());
+        self.regs.set_d(v);
+      }
+      0b0000_1011 => {
+        let v = self.alu_rrc(self.regs.e());
+        self.regs.set_e(v);
+      }
+      0b0000_1100 => {
+        let v = self.alu_rrc(self.regs.h());
+        self.regs.set_h(v);
+      }
+      0b0000_1101 => {
+        let v = self.alu_rrc(self.regs.l());
+        self.regs.set_l(v);
+      }
+      0b0000_1110 => {
+        let ptr = self.regs.hl() as usize;
+        let v = self.alu_rrc(self.ram.read8(ptr));
+        self.ram.write8(ptr, v);
+      }
+      0b0000_1111 => {
+        let v = self.alu_rrc(self.regs.a());
+        self.regs.set_a(v);
+      }
+
+      // RL D
+      0b0001_0000 => {
+        let v = self.alu_rl(self.regs.b());
+        self.regs.set_b(v);
+      }
+      0b0001_0001 => {
+        let v = self.alu_rl(self.regs.c());
+        self.regs.set_c(v);
+      }
+      0b0001_0010 => {
+        let v = self.alu_rl(self.regs.d());
+        self.regs.set_d(v);
+      }
+      0b0001_0011 => {
+        let v = self.alu_rl(self.regs.e());
+        self.regs.set_e(v);
+      }
+      0b0001_0100 => {
+        let v = self.alu_rl(self.regs.h());
+        self.regs.set_h(v);
+      }
+      0b0001_0101 => {
+        let v = self.alu_rl(self.regs.l());
+        self.regs.set_l(v);
+      }
+      0b0001_0110 => {
+        let ptr = self.regs.hl() as usize;
+        let v = self.alu_rl(self.ram.read8(ptr));
+        self.ram.write8(ptr, v);
+      }
+      0b0001_0111 => {
+        let v = self.alu_rl(self.regs.a());
+        self.regs.set_a(v);
+      }
+
+      // RR D
+      0b0001_1000 => {
+        let v = self.alu_rr(self.regs.b());
+        self.regs.set_b(v);
+      }
+      0b0001_1001 => {
+        let v = self.alu_rr(self.regs.c());
+        self.regs.set_c(v);
+      }
+      0b0001_1010 => {
+        let v = self.alu_rr(self.regs.d());
+        self.regs.set_d(v);
+      }
+      0b0001_1011 => {
+        let v = self.alu_rr(self.regs.e());
+        self.regs.set_e(v);
+      }
+      0b0001_1100 => {
+        let v = self.alu_rr(self.regs.h());
+        self.regs.set_h(v);
+      }
+      0b0001_1101 => {
+        let v = self.alu_rr(self.regs.l());
+        self.regs.set_l(v);
+      }
+      0b0001_1110 => {
+        let ptr = self.regs.hl() as usize;
+        let v = self.alu_rr(self.ram.read8(ptr));
+        self.ram.write8(ptr, v);
+      }
+      0b0001_1111 => {
+        let v = self.alu_rr(self.regs.a());
+        self.regs.set_a(v);
+      }
+
+      _ => {
+        self.i_unknown(opcode);
+      }
+    };
+
+    pc + 2
   }
 
   fn alu_add16(&mut self, reg: Register16) {
@@ -1282,7 +1433,7 @@ impl CPU {
     ((n1 & mask) + (n2 & mask) & index_mask) == index_mask
   }
 
-  fn alu_val(&mut self, reg: u8) -> u8 {
+  fn alu_val(&self, reg: u8) -> u8 {
     match (reg & 0x07) {
       0x0 => self.regs.b(),
       0x1 => self.regs.c(),
@@ -1293,7 +1444,7 @@ impl CPU {
       0x6 => self.ram.read8(self.regs.hl() as usize),
       0x7 => self.regs.a(),
 
-      _ => panic!("Unkonwn R16 code: 0x{:x}", reg),
+      _ => panic!("Unkonwn alu_val register code: 0x{:x}", reg),
     }
   }
 }
@@ -3666,5 +3817,285 @@ mod tests {
     cpu.ram.write8(0, 0b1111_1011);
     cpu.exec();
     assert_eq!(cpu.interrupts, 1);
+  }
+
+  #[test]
+  fn opcode_cb_rlc() {
+    let mut cpu = CPU::new();
+
+    // RLC B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b0000_0100);
+
+    // RLC C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_c(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.c(), 0b0000_0100);
+
+    // RLC D
+    cpu.regs.set_pc(0);
+    cpu.regs.set_d(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0010);
+    cpu.exec();
+    assert_eq!(cpu.regs.d(), 0b0000_0100);
+
+    // RLC C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_e(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0011);
+    cpu.exec();
+    assert_eq!(cpu.regs.e(), 0b0000_0100);
+
+    // RLC H
+    cpu.regs.set_pc(0);
+    cpu.regs.set_h(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0100);
+    cpu.exec();
+    assert_eq!(cpu.regs.h(), 0b0000_0100);
+
+    // RLC L
+    cpu.regs.set_pc(0);
+    cpu.regs.set_l(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0101);
+    cpu.exec();
+    assert_eq!(cpu.regs.l(), 0b0000_0100);
+
+    // RLC (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(1024);
+    cpu.ram.write8(1024, 0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(1024), 0b0000_0100);
+
+    // RLC A
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_0111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b0000_0100);
+  }
+
+  #[test]
+  fn opcode_cb_rrc() {
+    let mut cpu = CPU::new();
+
+    // RRC B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b0000_0101);
+
+    // RRC C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_c(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.c(), 0b0000_0101);
+
+    // RRC D
+    cpu.regs.set_pc(0);
+    cpu.regs.set_d(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1010);
+    cpu.exec();
+    assert_eq!(cpu.regs.d(), 0b0000_0101);
+
+    // RRC C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_e(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1011);
+    cpu.exec();
+    assert_eq!(cpu.regs.e(), 0b0000_0101);
+
+    // RRC H
+    cpu.regs.set_pc(0);
+    cpu.regs.set_h(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1100);
+    cpu.exec();
+    assert_eq!(cpu.regs.h(), 0b0000_0101);
+
+    // RRC L
+    cpu.regs.set_pc(0);
+    cpu.regs.set_l(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1101);
+    cpu.exec();
+    assert_eq!(cpu.regs.l(), 0b0000_0101);
+
+    // RRC (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(1024);
+    cpu.ram.write8(1024, 0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(1024), 0b0000_0101);
+
+    // RRC A
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0000_1111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b0000_0101);
+  }
+
+  #[test]
+  fn opcode_cb_rl() {
+    let mut cpu = CPU::new();
+
+    // RL B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b0000_0100);
+
+    // RL C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_c(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.c(), 0b0000_0100);
+
+    // // RL D
+    cpu.regs.set_pc(0);
+    cpu.regs.set_d(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0010);
+    cpu.exec();
+    assert_eq!(cpu.regs.d(), 0b0000_0100);
+
+    // // RL C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_e(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0011);
+    cpu.exec();
+    assert_eq!(cpu.regs.e(), 0b0000_0100);
+
+    // // RL H
+    cpu.regs.set_pc(0);
+    cpu.regs.set_h(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0100);
+    cpu.exec();
+    assert_eq!(cpu.regs.h(), 0b0000_0100);
+
+    // // RL L
+    // cpu.regs.set_pc(0);
+    // cpu.regs.set_l(0b0000_0010);
+    // cpu.ram.write8(0, 0xCB);
+    // cpu.ram.write8(1, 0b0001_0101);
+    // cpu.exec();
+    // assert_eq!(cpu.regs.l(), 0b0000_0100);
+
+    // // RL (HL)
+    // cpu.regs.set_pc(0);
+    // cpu.regs.set_hl(1024);
+    // cpu.ram.write8(1024, 0b0000_0010);
+    // cpu.ram.write8(0, 0xCB);
+    // cpu.ram.write8(1, 0b0001_0110);
+    // cpu.exec();
+    // assert_eq!(cpu.ram.read8(1024), 0b0000_0100);
+
+    // // RL A
+    // cpu.regs.set_pc(0);
+    // cpu.regs.set_a(0b0000_0010);
+    // cpu.ram.write8(0, 0xCB);
+    // cpu.ram.write8(1, 0b0001_0111);
+    // cpu.exec();
+    // assert_eq!(cpu.regs.a(), 0b0000_0100);
+  }
+
+  #[test]
+  fn opcode_cb_rr() {
+    let mut cpu = CPU::new();
+
+    // RR B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b0000_0101);
+
+    // RR C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_c(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.c(), 0b0000_0101);
+
+    // RR D
+    cpu.regs.set_pc(0);
+    cpu.regs.set_d(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1010);
+    cpu.exec();
+    assert_eq!(cpu.regs.d(), 0b0000_0101);
+
+    // RR C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_e(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1011);
+    cpu.exec();
+    assert_eq!(cpu.regs.e(), 0b0000_0101);
+
+    // RR H
+    cpu.regs.set_pc(0);
+    cpu.regs.set_h(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1100);
+    cpu.exec();
+    assert_eq!(cpu.regs.h(), 0b0000_0101);
+
+    // RR L
+    cpu.regs.set_pc(0);
+    cpu.regs.set_l(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1101);
+    cpu.exec();
+    assert_eq!(cpu.regs.l(), 0b0000_0101);
+
+    // RR (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(1024);
+    cpu.ram.write8(1024, 0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(1024), 0b0000_0101);
+
+    // RR A
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b0000_1010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_1111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b0000_0101);
   }
 }
