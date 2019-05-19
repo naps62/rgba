@@ -884,7 +884,50 @@ impl CPU {
       // JP N
       0b1100_0011 => self.read_arg16(),
 
-      // // CALL F, N
+      // CALL F, N
+      // CALL NZ, N
+      0b1100_0100 => {
+        if !self.regs.get_flag(ZF) {
+          self.push(pc + 3);
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+      // CALL Z, N
+      0b1100_1100 => {
+        if self.regs.get_flag(ZF) {
+          self.push(pc + 3);
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+      // CALL NC, N
+      0b1101_0100 => {
+        if !self.regs.get_flag(CF) {
+          self.push(pc + 3);
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+      // CALL C, N
+      0b1101_1100 => {
+        if self.regs.get_flag(CF) {
+          self.push(pc + 3);
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+
+      // CALL N
+      0b1100_1101 => {
+        self.push(pc + 3);
+        self.read_arg16()
+      }
+      //
       // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0100) => pc + 3,
 
       // // CALL N
@@ -3341,6 +3384,110 @@ mod tests {
     cpu.ram.write8(0, 0b1100_0011);
     cpu.ram.write8(1, 123);
     cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
+  }
+
+  #[test]
+  fn opcode_call_f_n() {
+    let mut cpu = CPU::new();
+
+    // CALL NZ, N when ZF is not set
+    cpu.regs.set_flag(ZF, false);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_0100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 3);
+    assert_eq!(cpu.regs.pc(), 123);
+
+    // CALL NZ, N when ZF is set
+    cpu.regs.set_flag(ZF, true);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_0100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // CALL Z, N when ZF is not set
+    cpu.regs.set_flag(ZF, false);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_1100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // CALL Z, N when ZF is set
+    cpu.regs.set_flag(ZF, true);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_1100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 3);
+    assert_eq!(cpu.regs.pc(), 123);
+
+    // CALL NC, N when CF is not set
+    cpu.regs.set_flag(CF, false);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_0100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 3);
+    assert_eq!(cpu.regs.pc(), 123);
+
+    // CALL NC, N when CF is set
+    cpu.regs.set_flag(CF, true);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_0100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // CALL C, N when CF is not set
+    cpu.regs.set_flag(CF, false);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_1100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // CALL C, N when CF is set
+    cpu.regs.set_flag(CF, true);
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_1100);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 3);
+    assert_eq!(cpu.regs.pc(), 123);
+  }
+
+  #[test]
+  fn opcode_call_n() {
+    let mut cpu = CPU::new();
+
+    // CALL C, N when CF is set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_1101);
+    cpu.ram.write16(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 3);
     assert_eq!(cpu.regs.pc(), 123);
   }
 }
