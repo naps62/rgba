@@ -56,72 +56,154 @@ impl Registers {
     use Register8::*;
 
     match reg {
-      A => self.AF.0,
-      B => self.BC.0,
-      C => self.BC.1,
-      D => self.DE.0,
-      E => self.DE.1,
-      H => self.HL.0,
-      L => self.HL.1,
+      A => self.a(),
+      B => self.b(),
+      C => self.c(),
+      D => self.d(),
+      E => self.e(),
+      H => self.h(),
+      L => self.l(),
     }
+  }
+
+  pub fn a(&self) -> u8 {
+    self.AF.0
+  }
+  pub fn b(&self) -> u8 {
+    self.BC.0
+  }
+  pub fn c(&self) -> u8 {
+    self.BC.1
+  }
+  pub fn d(&self) -> u8 {
+    self.DE.0
+  }
+  pub fn e(&self) -> u8 {
+    self.DE.1
+  }
+  pub fn h(&self) -> u8 {
+    self.HL.0
+  }
+  pub fn l(&self) -> u8 {
+    self.HL.1
   }
 
   pub fn read16(&self, reg: Register16) -> u16 {
     use Register16::*;
 
     match reg {
-      AF => reg8x2_to_reg16(self.AF),
-      BC => reg8x2_to_reg16(self.BC),
-      DE => reg8x2_to_reg16(self.DE),
-      HL => reg8x2_to_reg16(self.HL),
-      SP => self.SP,
-      PC => self.PC,
+      AF => self.af(),
+      BC => self.bc(),
+      DE => self.de(),
+      HL => self.hl(),
+      SP => self.sp(),
+      PC => self.pc(),
     }
+  }
+
+  pub fn af(&self) -> u16 {
+    reg8x2_to_reg16(self.AF)
+  }
+  pub fn bc(&self) -> u16 {
+    reg8x2_to_reg16(self.BC)
+  }
+  pub fn de(&self) -> u16 {
+    reg8x2_to_reg16(self.DE)
+  }
+  pub fn hl(&self) -> u16 {
+    reg8x2_to_reg16(self.HL)
+  }
+  pub fn sp(&self) -> u16 {
+    self.SP
+  }
+  pub fn pc(&self) -> u16 {
+    self.PC
   }
 
   pub fn write8(&mut self, reg: Register8, value: u8) {
     use Register8::*;
 
     match reg {
-      A => self.AF.0 = value,
-      B => self.BC.0 = value,
-      C => self.BC.1 = value,
-      D => self.DE.0 = value,
-      E => self.DE.1 = value,
-      H => self.HL.0 = value,
-      L => self.HL.1 = value,
+      A => self.set_a(value),
+      B => self.set_b(value),
+      C => self.set_c(value),
+      D => self.set_d(value),
+      E => self.set_e(value),
+      H => self.set_h(value),
+      L => self.set_l(value),
     };
+  }
+
+  pub fn set_a(&mut self, value: u8) {
+    self.AF.0 = value
+  }
+  pub fn set_b(&mut self, value: u8) {
+    self.BC.0 = value
+  }
+  pub fn set_c(&mut self, value: u8) {
+    self.BC.1 = value
+  }
+  pub fn set_d(&mut self, value: u8) {
+    self.DE.0 = value
+  }
+  pub fn set_e(&mut self, value: u8) {
+    self.DE.1 = value
+  }
+  pub fn set_h(&mut self, value: u8) {
+    self.HL.0 = value
+  }
+  pub fn set_l(&mut self, value: u8) {
+    self.HL.1 = value
   }
 
   pub fn write16(&mut self, reg: Register16, value: u16) {
     use Register16::*;
 
     match reg {
-      AF => self.AF = reg16_to_reg8x2(value),
-      BC => self.BC = reg16_to_reg8x2(value),
-      DE => self.DE = reg16_to_reg8x2(value),
-      HL => self.HL = reg16_to_reg8x2(value),
-      SP => self.SP = value,
-      PC => self.PC = value,
+      AF => self.set_af(value),
+      BC => self.set_bc(value),
+      DE => self.set_de(value),
+      HL => self.set_hl(value),
+      SP => self.set_sp(value),
+      CP => self.set_pc(value),
     }
   }
 
-  pub fn get_flag(&self, flag: Flag) -> u8 {
+  pub fn set_af(&mut self, v: u16) {
+    self.AF = reg16_to_reg8x2(v)
+  }
+  pub fn set_bc(&mut self, v: u16) {
+    self.BC = reg16_to_reg8x2(v)
+  }
+  pub fn set_de(&mut self, v: u16) {
+    self.DE = reg16_to_reg8x2(v)
+  }
+  pub fn set_hl(&mut self, v: u16) {
+    self.HL = reg16_to_reg8x2(v)
+  }
+  pub fn set_sp(&mut self, v: u16) {
+    self.SP = v
+  }
+  pub fn set_pc(&mut self, v: u16) {
+    self.PC = v
+  }
+
+  pub fn get_flag(&self, flag: Flag) -> bool {
     let flag_index = flag as u8;
     let mask = (1 as u8) << flag_index;
 
-    (self.AF.1 & mask) >> flag_index
+    ((self.AF.1 & mask) >> flag_index) == 1
   }
 
-  pub fn set_flag(&mut self, flag: Flag, value: u8) {
-    if value == 0 {
-      let mask = !((1 as u8) << (flag as u8));
-
-      self.AF.1 = self.AF.1 & mask;
-    } else {
+  pub fn set_flag(&mut self, flag: Flag, value: bool) {
+    if value {
       let mask = (1 as u8) << (flag as u8);
 
       self.AF.1 = self.AF.1 | mask;
+    } else {
+      let mask = !((1 as u8) << (flag as u8));
+
+      self.AF.1 = self.AF.1 & mask;
     }
   }
 }
@@ -228,44 +310,44 @@ mod tests {
   fn zf_flag() {
     let mut registers = Registers::new();
 
-    assert_eq!(registers.get_flag(ZF), 0);
-    registers.set_flag(ZF, 1);
-    assert_eq!(registers.get_flag(ZF), 1);
+    assert_eq!(registers.get_flag(ZF), false);
+    registers.set_flag(ZF, true);
+    assert_eq!(registers.get_flag(ZF), true);
     assert_eq!(registers.read16(AF), 128);
-    registers.set_flag(ZF, 0);
-    assert_eq!(registers.get_flag(ZF), 0);
+    registers.set_flag(ZF, false);
+    assert_eq!(registers.get_flag(ZF), false);
   }
 
   #[test]
   fn nf_flag() {
     let mut registers = Registers::new();
 
-    assert_eq!(registers.get_flag(NF), 0);
-    registers.set_flag(NF, 1);
-    assert_eq!(registers.get_flag(NF), 1);
+    assert_eq!(registers.get_flag(NF), false);
+    registers.set_flag(NF, true);
+    assert_eq!(registers.get_flag(NF), true);
     assert_eq!(registers.read16(AF), 64);
-    registers.set_flag(NF, 0);
-    assert_eq!(registers.get_flag(NF), 0);
+    registers.set_flag(NF, false);
+    assert_eq!(registers.get_flag(NF), false);
   }
 
   fn hf_flag() {
     let mut registers = Registers::new();
 
-    assert_eq!(registers.get_flag(HF), 0);
-    registers.set_flag(HF, 1);
-    assert_eq!(registers.get_flag(HF), 1);
+    assert_eq!(registers.get_flag(HF), false);
+    registers.set_flag(HF, true);
+    assert_eq!(registers.get_flag(HF), true);
     assert_eq!(registers.read16(AF), 32);
-    registers.set_flag(HF, 0);
-    assert_eq!(registers.get_flag(HF), 0);
+    registers.set_flag(HF, false);
+    assert_eq!(registers.get_flag(HF), false);
   }
   #[test]
   fn cf_flag() {
     let mut registers = Registers::new();
-    assert_eq!(registers.get_flag(CF), 0);
-    registers.set_flag(CF, 1);
-    assert_eq!(registers.get_flag(CF), 1);
+    assert_eq!(registers.get_flag(CF), false);
+    registers.set_flag(CF, true);
+    assert_eq!(registers.get_flag(CF), true);
     assert_eq!(registers.read16(AF), 16);
-    registers.set_flag(CF, 0);
-    assert_eq!(registers.get_flag(CF), 0);
+    registers.set_flag(CF, false);
+    assert_eq!(registers.get_flag(CF), false);
   }
 }
