@@ -12,6 +12,7 @@ use Register8::*;
 pub struct CPU {
   regs: Registers,
   ram: Memory,
+  interrupts: u32,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -31,6 +32,7 @@ impl CPU {
     CPU {
       regs: Registers::new(),
       ram: Memory::new(8 * 1024),
+      interrupts: 0,
     }
   }
 
@@ -764,29 +766,123 @@ impl CPU {
         pc + 2
       }
 
-      // // POP R
-      // _ if opcode_match(opcode, 0b1100_1111, 0b1100_0001) => pc + 2,
+      // POP R
+      0b1100_0001 => {
+        let v = self.pop();
+        self.regs.set_bc(v);
+        pc + 1
+      }
+      0b1101_0001 => {
+        let v = self.pop();
+        self.regs.set_de(v);
+        pc + 1
+      }
+      0b1110_0001 => {
+        let v = self.pop();
+        self.regs.set_hl(v);
+        pc + 1
+      }
+      0b1111_0001 => {
+        let v = self.pop();
+        self.regs.set_af(v);
+        pc + 1
+      }
 
-      // // PUSH R
-      // _ if opcode_match(opcode, 0b1100_1111, 0b1100_0101) => pc + 2,
+      // PUSH R
+      0b1100_0101 => {
+        self.push(self.regs.bc());
+        pc + 1
+      }
+      0b1101_0101 => {
+        self.push(self.regs.de());
+        pc + 1
+      }
+      0b1110_0101 => {
+        self.push(self.regs.hl());
+        pc + 1
+      }
+      0b1111_0101 => {
+        self.push(self.regs.af());
+        pc + 1
+      }
 
-      // // RST N
-      // _ if opcode_match(opcode, 0b1100_0111, 0b1100_0111) => pc + 1,
+      // RET NZ
+      0b1100_0000 => {
+        if !self.regs.get_flag(ZF) {
+          self.pop()
+        } else {
+          pc + 1
+        }
+      }
+      // RET Z
+      0b1100_1000 => {
+        if self.regs.get_flag(ZF) {
+          self.pop()
+        } else {
+          pc + 1
+        }
+      }
+      // RET NC
+      0b1101_0000 => {
+        if !self.regs.get_flag(CF) {
+          self.pop()
+        } else {
+          pc + 1
+        }
+      }
+      // RET C
+      0b1101_1000 => {
+        if self.regs.get_flag(CF) {
+          self.pop()
+        } else {
+          pc + 1
+        }
+      }
 
-      // // RET F
-      // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0000) => pc + 1,
+      // RET
+      0b1100_1001 => self.pop(),
 
-      // // RET
-      // 0xc9 => pc + 1,
+      // RETI
+      0b1101_1001 => {
+        self.interrupts = 1;
+        self.pop()
+      }
 
-      // // RETI
-      // 0xd9 => pc + 1,
+      // JP NZ, N
+      0b1100_0010 => {
+        if !self.regs.get_flag(ZF) {
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+      // JP Z, N
+      0b1100_1010 => {
+        if self.regs.get_flag(ZF) {
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+      // JP NC, N
+      0b1101_0010 => {
+        if !self.regs.get_flag(CF) {
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
+      // JP C N
+      0b1101_1010 => {
+        if self.regs.get_flag(CF) {
+          self.read_arg16()
+        } else {
+          pc + 3
+        }
+      }
 
-      // // JP F, N
-      // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0010) => pc + 3,
-
-      // // JP N
-      // 0xc3 => pc + 3,
+      // JP N
+      0b1100_0011 => self.read_arg16(),
 
       // // CALL F, N
       // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0100) => pc + 3,
@@ -1044,6 +1140,18 @@ impl CPU {
     self.regs.set_flag(NF, false);
 
     self.regs.set_a(v);
+  }
+
+  fn push(&mut self, value: u16) {
+    self.regs.set_sp(self.regs.sp() - 2);
+    self.ram.write16(self.regs.sp() as usize, value);
+  }
+
+  fn pop(&mut self) -> u16 {
+    let v = self.ram.read16(self.regs.sp() as usize);
+    self.regs.set_sp(self.regs.sp() + 2);
+
+    v
   }
 
   fn i_unknown(&self, opcode: u8) -> u16 {
@@ -2968,5 +3076,271 @@ mod tests {
     cpu.ram.write8(3, 0b1011_0000);
     cpu.exec();
     assert_eq!(cpu.regs.get_flag(CF), false);
+  }
+
+  #[test]
+  fn opcode_pop() {
+    let mut cpu = CPU::new();
+
+    // POP BC
+    cpu.regs.set_sp(1024);
+    cpu.ram.write16(1024, 0xAF);
+    cpu.ram.write8(0, 0b1100_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.bc(), 0xAF);
+    assert_eq!(cpu.regs.sp(), 1026);
+
+    // POP DE
+    cpu.regs.set_sp(1024);
+    cpu.ram.write16(1024, 0xAF);
+    cpu.ram.write8(1, 0b1101_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.de(), 0xAF);
+    assert_eq!(cpu.regs.sp(), 1026);
+
+    // POP HL
+    cpu.regs.set_sp(1024);
+    cpu.ram.write16(1024, 0xAF);
+    cpu.ram.write8(2, 0b1110_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.hl(), 0xAF);
+    assert_eq!(cpu.regs.sp(), 1026);
+
+    // POP AF
+    cpu.regs.set_sp(1024);
+    cpu.ram.write16(1024, 0xAF);
+    cpu.ram.write8(3, 0b1111_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.af(), 0xAF);
+    assert_eq!(cpu.regs.sp(), 1026);
+  }
+
+  #[test]
+  fn opcode_push() {
+    let mut cpu = CPU::new();
+
+    // PUSH BC
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_bc(0xAF);
+    cpu.ram.write8(0, 0b1100_0101);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 0xAF);
+
+    // PUSH DE
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_de(0xAF);
+    cpu.ram.write8(1, 0b1100_0101);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 0xAF);
+
+    // PUSH HL
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_hl(0xAF);
+    cpu.ram.write8(2, 0b1110_0101);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 0xAF);
+
+    // PUSH AF
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_af(0xAF);
+    cpu.ram.write8(3, 0b1111_0101);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1022);
+    assert_eq!(cpu.ram.read16(1022), 0xAF);
+  }
+
+  #[test]
+  fn opcode_ret_f() {
+    let mut cpu = CPU::new();
+
+    // RET NZ if Z flag is not set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.regs.set_flag(ZF, false);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1100_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 666);
+
+    // RET NZ if Z flag is set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_flag(ZF, true);
+    cpu.regs.set_pc(0);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1100_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 1);
+    assert_eq!(cpu.regs.sp(), 1022);
+
+    // RET Z if Z flag is not set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.regs.set_flag(ZF, false);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1100_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 1);
+    assert_eq!(cpu.regs.sp(), 1022);
+
+    // RET Z if Z flag is set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_flag(ZF, true);
+    cpu.regs.set_pc(0);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1100_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 666);
+
+    // RET NC if C flag is not set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.regs.set_flag(CF, false);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1101_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 666);
+
+    // RET NC if C flag is set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_flag(CF, true);
+    cpu.regs.set_pc(0);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1101_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 1);
+    assert_eq!(cpu.regs.sp(), 1022);
+
+    // RET C if C flag is not set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.regs.set_flag(CF, false);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1101_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 1);
+    assert_eq!(cpu.regs.sp(), 1022);
+
+    // RET C if C flag is set
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_flag(CF, true);
+    cpu.regs.set_pc(0);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1101_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 666);
+  }
+
+  #[test]
+  fn opcode_ret() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1100_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 666);
+  }
+
+  #[test]
+  fn opcode_reti() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_sp(1024);
+    cpu.regs.set_pc(0);
+    cpu.push(666);
+    cpu.ram.write8(0, 0b1101_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 1024);
+    assert_eq!(cpu.regs.pc(), 666);
+    assert_eq!(cpu.interrupts, 1);
+  }
+
+  #[test]
+  fn opcode_jp_f_n() {
+    let mut cpu = CPU::new();
+
+    // JP NZ, N when ZF is not set
+    cpu.regs.set_flag(ZF, false);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_0010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
+
+    // JP NZ, N when ZF is set
+    cpu.regs.set_flag(ZF, true);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_0010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // JP Z, N when ZF is not set
+    cpu.regs.set_flag(ZF, false);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_1010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // JP Z, N when ZF is set
+    cpu.regs.set_flag(ZF, true);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_1010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
+
+    // JP NC, N when CF is not set
+    cpu.regs.set_flag(CF, false);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_0010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
+
+    // JP NC, N when CF is set
+    cpu.regs.set_flag(CF, true);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_0010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // JP C, N when CF is not set
+    cpu.regs.set_flag(CF, false);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_1010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 3);
+
+    // JP C, N when CF is set
+    cpu.regs.set_flag(CF, true);
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1101_1010);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
+  }
+
+  #[test]
+  fn opcode_jp_n() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_pc(0);
+    cpu.ram.write8(0, 0b1100_0011);
+    cpu.ram.write8(1, 123);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
   }
 }
