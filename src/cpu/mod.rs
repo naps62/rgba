@@ -31,7 +31,7 @@ impl CPU {
   pub fn new() -> CPU {
     CPU {
       regs: Registers::new(),
-      ram: Memory::new(8 * 1024),
+      ram: Memory::new(8 * 1024 * 1024), // this needs to be refactored from a RAM array into a memory management unit
       interrupts: 0,
     }
   }
@@ -927,46 +927,84 @@ impl CPU {
         self.push(pc + 3);
         self.read_arg16()
       }
-      //
-      // _ if opcode_match(opcode, 0b1110_0111, 0b1100_0100) => pc + 3,
 
-      // // CALL N
-      // 0xcd => pc + 3,
+      0b1110_1000 => {
+        let v = self.alu_add16imm(self.regs.sp());
+        self.regs.set_sp(v);
+        pc + 2
+      }
 
-      // // ADD SP, N
-      // 0xe8 => pc + 2,
+      // LD HL, SP + N
+      0b1111_1000 => {
+        let v = self.alu_add16imm(self.regs.sp());
+        self.regs.set_hl(v);
+        pc + 2
+      }
 
-      // // LD HL, SP + N
-      // 0xf8 => pc + 2,
+      // LD (FF00+N), A
+      0b1110_0000 => {
+        let ptr = (0xFF00 | self.read_arg8() as u16) as usize;
+        self.ram.write8(ptr, self.regs.a());
+        pc + 2
+      }
 
-      // // LD (FF00+N), A
-      // 0xe0 => pc + 2,
+      // LD A, (FF00+N)
+      0b1111_0000 => {
+        let ptr = (0xFF00 | self.read_arg8() as u16) as usize;
+        self.regs.set_a(self.ram.read8(ptr));
+        pc + 2
+      }
 
-      // // LD A, (FF00+N)
-      // 0xf0 => pc + 2,
+      // LD (C), A
+      0b1110_0010 => {
+        let ptr = (0xFF00 | self.regs.c() as u16) as usize;
+        self.ram.write8(ptr, self.regs.a());
+        pc + 2
+      }
 
-      // // LD (C), A
-      // 0xe2 => pc + 1,
+      // LD A, (C)
+      0b1111_0010 => {
+        let ptr = (0xFF00 | self.regs.c() as u16) as usize;
+        self.regs.set_a(self.ram.read8(ptr));
+        pc + 2
+      }
 
-      // // LD A, (C)
-      // 0xf2 => pc + 1,
+      // LD (N), A
+      0b1110_1010 => {
+        let ptr = self.read_arg16() as usize;
+        self.ram.write8(ptr, self.regs.a());
+        pc + 2
+      }
 
-      // // LD (N), A
-      // 0xe6 => pc + 3,
+      // LD A, (N)
+      0b1111_1010 => {
+        let ptr = self.read_arg16() as usize;
+        self.regs.set_a(self.ram.read8(ptr));
+        pc + 2
+      }
 
-      // // LD A, (N)
-      // 0xf6 => pc + 3,
+      // JP HL
+      0b1110_1001 => self.regs.hl(),
 
-      // // JP HL
-      // 0xe9 => pc + 1,
-      // // LD SP, HL
-      // 0xf9 => pc + 1,
-      // // DI
-      // 0xf3 => pc + 1,
-      // // EI
-      // 0xfb => pc + 1,
+      // LD SP, HL
+      0b1111_1001 => {
+        self.regs.set_sp(self.regs.hl());
+        pc + 1
+      }
 
-      // // read instr from byte 2
+      // DI
+      0b1111_0011 => {
+        self.interrupts = 0;
+        pc + 1
+      }
+
+      // EI
+      0b1111_1011 => {
+        self.interrupts = 1;
+        pc + 1
+      }
+
+      // read instr from byte 2
       // 0xcb => pc + 2,
       _ => self.i_unknown(opcode),
     }
@@ -1183,6 +1221,19 @@ impl CPU {
     self.regs.set_flag(NF, false);
 
     self.regs.set_a(v);
+  }
+
+  fn alu_add16imm(&mut self, r: u16) -> u16 {
+    let d = self.read_arg8() as u16;
+
+    let v = r.wrapping_add(d);
+
+    self.regs.set_flag(ZF, v == 0);
+    self.regs.set_flag(HF, (r & 0x000F) + (d & 0x000F) > 0x000F);
+    self.regs.set_flag(NF, false);
+    self.regs.set_flag(CF, (r & 0x00FF) + (d & 0x00FF) > 0x00FF);
+
+    v
   }
 
   fn push(&mut self, value: u16) {
@@ -3489,5 +3540,131 @@ mod tests {
     assert_eq!(cpu.regs.sp(), 1022);
     assert_eq!(cpu.ram.read16(1022), 3);
     assert_eq!(cpu.regs.pc(), 123);
+  }
+
+  #[test]
+  fn opcode_add_sp_n() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_sp(1);
+    cpu.ram.write8(0, 0b1110_1000);
+    cpu.ram.write8(1, 3);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 4);
+  }
+
+  #[test]
+  fn opcode_ld_hl_sp_n() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_sp(1);
+    cpu.ram.write8(0, 0b1111_1000);
+    cpu.ram.write8(1, 3);
+    cpu.exec();
+    assert_eq!(cpu.regs.hl(), 4);
+  }
+
+  #[test]
+  fn opcode_ld_ff00_n_a() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_a(1);
+    cpu.ram.write8(0, 0b1110_0000);
+    cpu.ram.write8(1, 2);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(0xFF02), 1);
+  }
+
+  #[test]
+  fn opcode_ld_a_ff00_n() {
+    let mut cpu = CPU::new();
+
+    cpu.ram.write8(0, 0b1111_0000);
+    cpu.ram.write8(1, 2);
+    cpu.ram.write8(0xFF02, 1);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 1);
+  }
+
+  #[test]
+  fn opcode_ld_c_a() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_a(1);
+    cpu.regs.set_c(2);
+    cpu.ram.write8(0, 0b1110_0010);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(0xFF02), 1);
+  }
+
+  #[test]
+  fn opcode_ld_a_c() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_c(2);
+    cpu.ram.write8(0, 0b1111_0010);
+    cpu.ram.write8(0xFF02, 1);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 1);
+  }
+
+  #[test]
+  fn opcode_ld_n_a() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_a(1);
+    cpu.ram.write8(0, 0b1110_1010);
+    cpu.ram.write16(1, 0x1234);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(0x1234), 1);
+  }
+
+  #[test]
+  fn opcode_ld_a_n() {
+    let mut cpu = CPU::new();
+
+    cpu.ram.write16(0x1234, 1);
+    cpu.ram.write8(0, 0b1111_1010);
+    cpu.ram.write16(1, 0x1234);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 1);
+  }
+
+  #[test]
+  fn opcode_jp_hl() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_hl(123);
+    cpu.ram.write8(0, 0b1110_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.pc(), 123);
+  }
+
+  #[test]
+  fn opcode_ld_sp_hl() {
+    let mut cpu = CPU::new();
+
+    cpu.regs.set_hl(123);
+    cpu.ram.write8(0, 0b1111_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.sp(), 123);
+  }
+
+  #[test]
+  fn opcode_di() {
+    let mut cpu = CPU::new();
+
+    cpu.ram.write8(0, 0b1111_0011);
+    cpu.exec();
+    assert_eq!(cpu.interrupts, 0);
+  }
+
+  #[test]
+  fn opcode_ei() {
+    let mut cpu = CPU::new();
+
+    cpu.ram.write8(0, 0b1111_1011);
+    cpu.exec();
+    assert_eq!(cpu.interrupts, 1);
   }
 }
