@@ -1258,6 +1258,93 @@ impl CPU {
         self.regs.set_a(v);
       }
 
+      // SRL D
+      0b0011_1000 => {
+        let v = self.alu_srl(self.regs.b());
+        self.regs.set_b(v);
+      }
+      0b0011_1001 => {
+        let v = self.alu_srl(self.regs.c());
+        self.regs.set_c(v);
+      }
+      0b0011_1010 => {
+        let v = self.alu_srl(self.regs.d());
+        self.regs.set_d(v);
+      }
+      0b0011_1011 => {
+        let v = self.alu_srl(self.regs.e());
+        self.regs.set_e(v);
+      }
+      0b0011_1100 => {
+        let v = self.alu_srl(self.regs.h());
+        self.regs.set_h(v);
+      }
+      0b0011_1101 => {
+        let v = self.alu_srl(self.regs.l());
+        self.regs.set_l(v);
+      }
+      0b0011_1110 => {
+        let ptr = self.regs.hl() as usize;
+        let v = self.alu_srl(self.ram.read8(ptr));
+        self.ram.write8(ptr, v);
+      }
+      0b0011_1111 => {
+        let v = self.alu_srl(self.regs.a());
+        self.regs.set_a(v);
+      }
+
+      // BIT N, (HL)
+      _ if opcode_match(opcode, 0b1100_0111, 0b0100_0110) => {
+        let n = self.cb_alu_n(opcode);
+        let v = self.ram.read8(self.regs.hl() as usize);
+
+        self.alu_bit(n, v);
+      }
+
+      // BIT N, D
+      _ if opcode_match(opcode, 0b1100_0000, 0b0100_0000) => {
+        let n = self.cb_alu_n(opcode);
+        let reg = self.cb_alu_reg(opcode);
+        let v = self.regs.read8(reg);
+        println!("{} {}", n, v);
+
+        self.alu_bit(n, v);
+      }
+
+      // RES N, (HL)
+      _ if opcode_match(opcode, 0b1100_0111, 0b1000_0110) => {
+        let n = self.cb_alu_n(opcode);
+        let v = self.ram.read8(self.regs.hl() as usize);
+
+        self.ram.write8(self.regs.hl() as usize, v & !(1 << n));
+      }
+
+      // RES N, D
+      _ if opcode_match(opcode, 0b1100_0000, 0b1000_0000) => {
+        let n = self.cb_alu_n(opcode);
+        let reg = self.cb_alu_reg(opcode);
+        let v = self.regs.read8(reg);
+
+        self.regs.write8(reg, v & !(1 << n));
+      }
+
+      // SET N, (HL)
+      _ if opcode_match(opcode, 0b1100_0111, 0b1100_0110) => {
+        let n = self.cb_alu_n(opcode);
+        let v = self.ram.read8(self.regs.hl() as usize);
+
+        self.ram.write8(self.regs.hl() as usize, v | (1 << n));
+      }
+
+      // SET N, D
+      _ if opcode_match(opcode, 0b1100_0000, 0b1100_0000) => {
+        let n = self.cb_alu_n(opcode);
+        let reg = self.cb_alu_reg(opcode);
+        let v = self.regs.read8(reg);
+
+        self.regs.write8(reg, v | (1 << n));
+      }
+
       _ => {
         self.i_unknown(opcode);
       }
@@ -1374,6 +1461,27 @@ impl CPU {
     self.regs.set_flag(NF, false);
 
     (a >> 4) | (a << 4)
+  }
+
+  fn alu_srl(&mut self, a: u8) -> u8 {
+    let c = a & 0x01 == 0x01;
+    let r = a >> 1;
+
+    self.regs.set_flag(NF, false);
+    self.regs.set_flag(HF, false);
+    self.regs.set_flag(ZF, r == 0);
+    self.regs.set_flag(CF, c);
+
+    r
+  }
+
+  fn alu_bit(&mut self, n: u8, v: u8) {
+    let r = v & (1 << (n as u32)) == 0;
+    println!("{}", r);
+
+    self.regs.set_flag(NF, false);
+    self.regs.set_flag(HF, true);
+    self.regs.set_flag(ZF, r);
   }
 
   // implementation taken from
@@ -1584,6 +1692,24 @@ impl CPU {
 
       _ => panic!("Unkonwn alu_val register code: 0x{:x}", reg),
     }
+  }
+
+  fn cb_alu_reg(&self, reg: u8) -> Register8 {
+    match (reg & 0x07) {
+      0x0 => B,
+      0x1 => C,
+      0x2 => D,
+      0x3 => E,
+      0x4 => H,
+      0x5 => L,
+      0x7 => A,
+
+      _ => panic!("Unkonwn alu_val register code: 0x{:x}", reg),
+    }
+  }
+
+  fn cb_alu_n(&self, reg: u8) -> u8 {
+    (reg & 0b0011_1000) >> 3
   }
 }
 
@@ -4141,30 +4267,30 @@ mod tests {
     cpu.exec();
     assert_eq!(cpu.regs.h(), 0b0000_0100);
 
-    // // RL L
-    // cpu.regs.set_pc(0);
-    // cpu.regs.set_l(0b0000_0010);
-    // cpu.ram.write8(0, 0xCB);
-    // cpu.ram.write8(1, 0b0001_0101);
-    // cpu.exec();
-    // assert_eq!(cpu.regs.l(), 0b0000_0100);
+    // RL L
+    cpu.regs.set_pc(0);
+    cpu.regs.set_l(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0101);
+    cpu.exec();
+    assert_eq!(cpu.regs.l(), 0b0000_0100);
 
-    // // RL (HL)
-    // cpu.regs.set_pc(0);
-    // cpu.regs.set_hl(1024);
-    // cpu.ram.write8(1024, 0b0000_0010);
-    // cpu.ram.write8(0, 0xCB);
-    // cpu.ram.write8(1, 0b0001_0110);
-    // cpu.exec();
-    // assert_eq!(cpu.ram.read8(1024), 0b0000_0100);
+    // RL (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(1024);
+    cpu.ram.write8(1024, 0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(1024), 0b0000_0100);
 
-    // // RL A
-    // cpu.regs.set_pc(0);
-    // cpu.regs.set_a(0b0000_0010);
-    // cpu.ram.write8(0, 0xCB);
-    // cpu.ram.write8(1, 0b0001_0111);
-    // cpu.exec();
-    // assert_eq!(cpu.regs.a(), 0b0000_0100);
+    // RL A
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0001_0111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b0000_0100);
   }
 
   #[test]
@@ -4396,6 +4522,14 @@ mod tests {
     cpu.ram.write8(1, 0b0010_1111);
     cpu.exec();
     assert_eq!(cpu.regs.a(), 0b0000_0001);
+
+    // SRA A with carry
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b1000_0000);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0010_1111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b1100_0000);
   }
 
   #[test]
@@ -4487,5 +4621,186 @@ mod tests {
     cpu.ram.write8(1, 0b0011_0111);
     cpu.exec();
     assert_eq!(cpu.regs.a(), 0x21);
+  }
+
+  #[test]
+  fn opcode_cb_srl_d() {
+    let mut cpu = CPU::new();
+
+    // SRL B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b0000_0001);
+
+    // SRL C
+    cpu.regs.set_pc(0);
+    cpu.regs.set_c(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1001);
+    cpu.exec();
+    assert_eq!(cpu.regs.c(), 0b0000_0001);
+
+    // SRL D
+    cpu.regs.set_pc(0);
+    cpu.regs.set_d(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1010);
+    cpu.exec();
+    assert_eq!(cpu.regs.d(), 0b0000_0001);
+
+    // SRL E
+    cpu.regs.set_pc(0);
+    cpu.regs.set_e(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1011);
+    cpu.exec();
+    assert_eq!(cpu.regs.e(), 0b0000_0001);
+
+    // SRL H
+    cpu.regs.set_pc(0);
+    cpu.regs.set_h(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1100);
+    cpu.exec();
+    assert_eq!(cpu.regs.h(), 0b0000_0001);
+
+    // SRL L
+    cpu.regs.set_pc(0);
+    cpu.regs.set_l(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1101);
+    cpu.exec();
+    assert_eq!(cpu.regs.l(), 0b0000_0001);
+
+    // SRL (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(123);
+    cpu.ram.write8(123, 0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(123), 0b0000_0001);
+
+    // SRL A
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b0000_0001);
+
+    // SRL A with carry
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b1000_0000);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1111);
+    cpu.exec();
+    assert_eq!(cpu.regs.a(), 0b0100_0000);
+  }
+
+  #[test]
+  fn opcode_cb_srl_d_flags() {
+    let mut cpu = CPU::new();
+
+    // Sets ZF flag if result is 0
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_0001);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.get_flag(ZF), true);
+
+    // Does not set ZF flag if result is 0
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_0010);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0011_1000);
+    cpu.exec();
+    assert_eq!(cpu.regs.get_flag(ZF), false);
+  }
+
+  #[test]
+  fn opcode_cb_bit_n_d_flags() {
+    let mut cpu = CPU::new();
+
+    // BIT N, B sets ZF if bit N is zero
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0b0000_0000);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0101_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.get_flag(ZF), true);
+
+    // BIT N, C resets ZF if bit N is 1
+    cpu.regs.set_pc(0);
+    cpu.regs.set_c(0b0000_0100);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0101_0001);
+    cpu.exec();
+    assert_eq!(cpu.regs.get_flag(ZF), false);
+
+    // BIT N, (HL) sets ZF if bit N is zero
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(123);
+    cpu.ram.write8(123, 0b0000_0000);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0111_1110);
+    cpu.exec();
+    assert_eq!(cpu.regs.get_flag(ZF), true);
+
+    // BIT N, A resets ZF if bit N is 1
+    cpu.regs.set_pc(0);
+    cpu.regs.set_a(0b1000_0000);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b0111_1111);
+    cpu.exec();
+    assert_eq!(cpu.regs.get_flag(ZF), false);
+  }
+
+  #[test]
+  fn opcode_cb_res_n_d() {
+    let mut cpu = CPU::new();
+
+    // RES N, B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0xFF);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b1001_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b1111_1011);
+
+    // RES N, (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(123);
+    cpu.ram.write8(123, 0xFF);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b1001_0110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(123), 0b1111_1011);
+  }
+
+  #[test]
+  fn opcode_cb_set_n_d() {
+    let mut cpu = CPU::new();
+
+    // SET N, B
+    cpu.regs.set_pc(0);
+    cpu.regs.set_b(0x00);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b1101_0000);
+    cpu.exec();
+    assert_eq!(cpu.regs.b(), 0b0000_0100);
+
+    // SET N, (HL)
+    cpu.regs.set_pc(0);
+    cpu.regs.set_hl(123);
+    cpu.ram.write8(123, 0x00);
+    cpu.ram.write8(0, 0xCB);
+    cpu.ram.write8(1, 0b1101_0110);
+    cpu.exec();
+    assert_eq!(cpu.ram.read8(123), 0b0000_0100);
   }
 }
