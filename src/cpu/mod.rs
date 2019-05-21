@@ -1,9 +1,7 @@
-pub mod opcodes;
 pub mod registers;
 
 use super::memory::Memory;
 use registers::{Flag, Register16, Register8, Registers};
-use std::num::Wrapping;
 
 use Flag::*;
 use Register16::*;
@@ -15,19 +13,8 @@ pub struct CPU {
   interrupts: u32,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum Arg {
-  R8(Register8),
-  R16(Register16),
-  N8(u8),
-  N16(u16),
-  Ptr(usize),
-  Ptr_R16(Register16),
-}
-
-use Arg::*;
-
 impl CPU {
+  #[allow(dead_code)]
   pub fn new() -> CPU {
     CPU {
       regs: Registers::new(),
@@ -37,6 +24,7 @@ impl CPU {
   }
 
   // executes the next instruction referenced by PC
+  #[allow(dead_code)]
   pub fn exec(&mut self) {
     let current_pc = self.regs.read16(PC);
 
@@ -1680,7 +1668,7 @@ impl CPU {
   }
 
   fn alu_val(&self, reg: u8) -> u8 {
-    match (reg & 0x07) {
+    match reg & 0x07 {
       0x0 => self.regs.b(),
       0x1 => self.regs.c(),
       0x2 => self.regs.d(),
@@ -1695,7 +1683,7 @@ impl CPU {
   }
 
   fn cb_alu_reg(&self, reg: u8) -> Register8 {
-    match (reg & 0x07) {
+    match reg & 0x07 {
       0x0 => B,
       0x1 => C,
       0x2 => D,

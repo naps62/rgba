@@ -21,7 +21,6 @@ pub enum Register8 {
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Register16 {
-  AF,
   BC,
   DE,
   HL,
@@ -92,7 +91,6 @@ impl Registers {
     use Register16::*;
 
     match reg {
-      AF => self.af(),
       BC => self.bc(),
       DE => self.de(),
       HL => self.hl(),
@@ -160,12 +158,11 @@ impl Registers {
     use Register16::*;
 
     match reg {
-      AF => self.set_af(value),
       BC => self.set_bc(value),
       DE => self.set_de(value),
       HL => self.set_hl(value),
       SP => self.set_sp(value),
-      CP => self.set_pc(value),
+      PC => self.set_pc(value),
     }
   }
 

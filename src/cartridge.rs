@@ -1,7 +1,7 @@
-pub struct Cartridge {}
+// pub struct Cartridge {}
 
-impl Cartridge {
-  pub fn new() -> Cartridge {
-    Cartridge {}
-  }
-}
+// impl Cartridge {
+//   pub fn new() -> Cartridge {
+//     Cartridge {}
+//   }
+// }
