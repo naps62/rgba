@@ -1,5 +1,5 @@
 mod cartridge;
-mod cpu;
+pub mod cpu;
 mod display;
 mod game_boy;
 mod memory;

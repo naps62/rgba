@@ -239,13 +239,20 @@ mod tests {
   #[test]
   fn read_8_bit_registers() {
     let registers = Registers::new();
+
+    assert_eq!(registers.read8(B), 0);
+    assert_eq!(registers.read8(C), 0);
+    assert_eq!(registers.read8(D), 0);
+    assert_eq!(registers.read8(E), 0);
+    assert_eq!(registers.read8(H), 0);
+    assert_eq!(registers.read8(L), 0);
+    assert_eq!(registers.read8(A), 0);
   }
 
   #[test]
   fn read_16_bit_registers() {
     let registers = Registers::new();
 
-    assert_eq!(registers.read16(AF), 0);
     assert_eq!(registers.read16(BC), 0);
     assert_eq!(registers.read16(DE), 0);
     assert_eq!(registers.read16(HL), 0);
@@ -286,7 +293,6 @@ mod tests {
     assert_eq!(registers.read8(H), 0);
     assert_eq!(registers.read8(L), 0);
 
-    registers.write16(AF, 65_535);
     registers.write16(BC, 65_534);
     registers.write16(DE, 65_533);
     registers.write16(HL, 65_532);
@@ -295,7 +301,6 @@ mod tests {
 
     println!("{:?}", registers);
 
-    assert_eq!(registers.read16(AF), 65_535);
     assert_eq!(registers.read16(BC), 65_534);
     assert_eq!(registers.read16(DE), 65_533);
     assert_eq!(registers.read16(HL), 65_532);
@@ -310,7 +315,6 @@ mod tests {
     assert_eq!(registers.get_flag(ZF), false);
     registers.set_flag(ZF, true);
     assert_eq!(registers.get_flag(ZF), true);
-    assert_eq!(registers.read16(AF), 128);
     registers.set_flag(ZF, false);
     assert_eq!(registers.get_flag(ZF), false);
   }
@@ -322,18 +326,17 @@ mod tests {
     assert_eq!(registers.get_flag(NF), false);
     registers.set_flag(NF, true);
     assert_eq!(registers.get_flag(NF), true);
-    assert_eq!(registers.read16(AF), 64);
     registers.set_flag(NF, false);
     assert_eq!(registers.get_flag(NF), false);
   }
 
+  #[test]
   fn hf_flag() {
     let mut registers = Registers::new();
 
     assert_eq!(registers.get_flag(HF), false);
     registers.set_flag(HF, true);
     assert_eq!(registers.get_flag(HF), true);
-    assert_eq!(registers.read16(AF), 32);
     registers.set_flag(HF, false);
     assert_eq!(registers.get_flag(HF), false);
   }
@@ -343,7 +346,6 @@ mod tests {
     assert_eq!(registers.get_flag(CF), false);
     registers.set_flag(CF, true);
     assert_eq!(registers.get_flag(CF), true);
-    assert_eq!(registers.read16(AF), 16);
     registers.set_flag(CF, false);
     assert_eq!(registers.get_flag(CF), false);
   }
