@@ -24,7 +24,9 @@ pub fn ensure_zip_extracted(zip_name: &str) {
 
   for i in 0..archive.len() {
     let mut file = archive.by_index(i).unwrap();
-    let outpath = file.sanitized_name();
+    let mut outpath = std::path::PathBuf::new();
+    outpath.push("cache/");
+    outpath.push(file.sanitized_name());
 
     if (&*file.name()).ends_with('/') {
       fs::create_dir_all(&outpath).unwrap();
