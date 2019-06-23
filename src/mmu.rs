@@ -6,6 +6,11 @@
 // http://gameboy.mongenel.com/dmg/asmmemmap.html
 type MemRange = (usize, usize);
 
+// Restart and Interrupt vectors
+const BOOT_BEG: usize: 0x0000;
+const BOOT_END: usize: 0x00ff;
+const BOOT_RANGE: MemRange = (BOOT_BEG, BOOT_END);
+
 // ROM, bank 0
 const ROM0_BEG: usize = 0x0000;
 const ROM0_END: usize = 0x3fff;
@@ -83,6 +88,7 @@ macro_rules! init_mem_bank {
 }
 
 pub struct MMU {
+  boot: declare_mem_bank!(BOOT_RANGE),
   rom0: declare_mem_bank!(ROM0_RANGE),
   romx: declare_mem_bank!(ROMX_RANGE),
   eram: declare_mem_bank!(ERAM_RANGE),
@@ -94,6 +100,7 @@ pub struct MMU {
 impl MMU {
   pub fn new() -> MMU {
     MMU {
+      boot: declare_mem_bank!(BOOT_RANGE),
       rom0: init_mem_bank!(ROM0_RANGE),
       romx: init_mem_bank!(ROMX_RANGE),
       eram: init_mem_bank!(ERAM_RANGE),
@@ -105,6 +112,7 @@ impl MMU {
 
   pub fn read8(&self, index: usize) -> u8 {
     match index {
+      BOOT_BEG...BOOT_END if booting => self.boot[index],
       ROM0_BEG...ROM0_END => self.rom0[index],
       ROMX_BEG...ROMX_END => self.romx[index - ROMX_BEG],
       ERAM_BEG...ERAM_END => self.eram[index - ERAM_BEG],
@@ -206,33 +214,4 @@ mod tests {
 
     mmu.write8(ROMX_BEG, 1);
   }
-
-  //   #[test]
-  //   fn write8() {
-  //     let mut memory = Memory::new(1);
-
-  //     memory.write8(0, 0b1111_1111);
-
-  //     assert_eq!(memory.mem[0], 0b1111_1111);
-  //   }
-
-  //   #[test]
-  //   fn read16() {
-  //     let mut memory = Memory::new(2);
-
-  //     memory.mem[0] = 255;
-  //     memory.mem[1] = 1;
-
-  //     assert_eq!(memory.read16(0), 511);
-  //   }
-
-  //   #[test]
-  //   fn write16() {
-  //     let mut memory = Memory::new(2);
-
-  //     memory.write16(0, 511);
-
-  //     assert_eq!(memory.mem[0], 255);
-  //     assert_eq!(memory.mem[1], 1);
-  //   }
 }

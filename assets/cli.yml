@@ -1,0 +1,16 @@
+name: rgba
+version: "1.0"
+author: Miguel Palhas <mpalhas@gmail.com>
+about: Rust GameBoy Emulator
+args:
+  - cartridge:
+      short: c
+      long: cart
+      value_name: CARTRIDGE
+      required: true
+      help: Cartridge file path
+      takes_value: true
+  - verbosity:
+      short: v
+      multiple: true
+      help: Set verbosity level

@@ -9,5 +9,7 @@ taken from the [Awesome Game Boy Development] list.
 1. [Ultimate Game Boy Talk](https://www.youtube.com/watch?v=HyzD8pNlpwI): a talk dissecting the internals of a Game Boy's
    hardware;
 2. [Game Boy: Complete Technical Reference](https://gekkio.fi/files/gb-docs/gbctr.pdf): exactly what the name suggests it is;
+3. [RealBoy](https://realboyemulator.wordpress.com/): a series of posts
+   describing the hardware and the making of the RealBoy emulator
 
 [Awesome Game Boy Development]: https://gbdev.github.io/list.html#emulator-development
