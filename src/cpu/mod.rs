@@ -15,10 +15,10 @@ pub struct CPU {
 
 impl CPU {
   #[allow(dead_code)]
-  pub fn new() -> CPU {
+  pub fn new(mmu: MMU) -> CPU {
     CPU {
       regs: Registers::new(),
-      mmu: MMU::new(), // this needs to be refactored from a mmu array into a memory management unit
+      mmu: mmu, // this needs to be refactored from a mmu array into a memory management unit
       interrupts: 0,
     }
   }

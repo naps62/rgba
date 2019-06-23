@@ -1,3 +1,5 @@
+use std::fs;
+
 // note: memory is little-endian
 // when reading a 2 byte number, we need to invert the two bytes
 
@@ -7,8 +9,8 @@
 type MemRange = (usize, usize);
 
 // Restart and Interrupt vectors
-const BOOT_BEG: usize: 0x0000;
-const BOOT_END: usize: 0x00ff;
+const BOOT_BEG: usize = 0x0000;
+const BOOT_END: usize = 0x00ff;
 const BOOT_RANGE: MemRange = (BOOT_BEG, BOOT_END);
 
 // ROM, bank 0
@@ -88,7 +90,8 @@ macro_rules! init_mem_bank {
 }
 
 pub struct MMU {
-  boot: declare_mem_bank!(BOOT_RANGE),
+  booting: bool,
+  boot: Vec<u8>,
   rom0: declare_mem_bank!(ROM0_RANGE),
   romx: declare_mem_bank!(ROMX_RANGE),
   eram: declare_mem_bank!(ERAM_RANGE),
@@ -99,8 +102,12 @@ pub struct MMU {
 
 impl MMU {
   pub fn new() -> MMU {
+    let boot = fs::read("assets/boot_rom.bin").unwrap();
+    println!("{:?}", boot);
+
     MMU {
-      boot: declare_mem_bank!(BOOT_RANGE),
+      booting: true,
+      boot: boot,
       rom0: init_mem_bank!(ROM0_RANGE),
       romx: init_mem_bank!(ROMX_RANGE),
       eram: init_mem_bank!(ERAM_RANGE),
@@ -110,9 +117,13 @@ impl MMU {
     }
   }
 
+  pub fn disable_boot_rom(&mut self) {
+    self.booting = false;
+  }
+
   pub fn read8(&self, index: usize) -> u8 {
     match index {
-      BOOT_BEG...BOOT_END if booting => self.boot[index],
+      BOOT_BEG...BOOT_END if self.booting => self.boot[index],
       ROM0_BEG...ROM0_END => self.rom0[index],
       ROMX_BEG...ROMX_END => self.romx[index - ROMX_BEG],
       ERAM_BEG...ERAM_END => self.eram[index - ERAM_BEG],
