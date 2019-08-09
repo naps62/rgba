@@ -77,6 +77,8 @@ const ZRAM_RANGE: MemRange = (ZRAM_BEG, ZRAM_END);
 
 const INTERRUPT: usize = 0xffff;
 
+const FLAG_BOOT: usize = 0xff50;
+
 macro_rules! declare_mem_bank {
   ($range:ident) => {
     [u8; $range.1 - $range.0 + 1]
@@ -90,13 +92,13 @@ macro_rules! init_mem_bank {
 }
 
 pub struct MMU {
-  booting: bool,
   boot: Vec<u8>,
   rom0: declare_mem_bank!(ROM0_RANGE),
   romx: declare_mem_bank!(ROMX_RANGE),
   eram: declare_mem_bank!(ERAM_RANGE),
   wram0: declare_mem_bank!(WRAM0_RANGE),
   wramx: declare_mem_bank!(WRAMX_RANGE),
+  io: declare_mem_bank!(IO_RANGE),
   zram: declare_mem_bank!(ZRAM_RANGE),
 }
 
@@ -108,27 +110,27 @@ impl MMU {
       Vec::new()
     };
 
-    println!("{:?}", boot);
-
-    MMU {
-      booting: boot_rom,
+    let mut mmu = MMU {
       boot: boot,
       rom0: init_mem_bank!(ROM0_RANGE),
       romx: init_mem_bank!(ROMX_RANGE),
       eram: init_mem_bank!(ERAM_RANGE),
       wram0: init_mem_bank!(WRAM0_RANGE),
       wramx: init_mem_bank!(WRAMX_RANGE),
+      io: init_mem_bank!(IO_RANGE),
       zram: init_mem_bank!(ZRAM_RANGE),
-    }
-  }
+    };
 
-  pub fn disable_boot_rom(&mut self) {
-    self.booting = false;
+    if (boot_rom) {
+      mmu.set_flag(FLAG_BOOT, true);
+    }
+
+    mmu
   }
 
   pub fn read8(&self, index: usize) -> u8 {
     match index {
-      BOOT_BEG...BOOT_END if self.booting => self.boot[index],
+      BOOT_BEG...BOOT_END if self.get_flag(FLAG_BOOT) => self.boot[index],
       ROM0_BEG...ROM0_END => self.rom0[index],
       ROMX_BEG...ROMX_END => self.romx[index - ROMX_BEG],
       ERAM_BEG...ERAM_END => self.eram[index - ERAM_BEG],
@@ -150,6 +152,40 @@ impl MMU {
       ZRAM_BEG...ZRAM_END => self.zram[index - ZRAM_BEG] = value,
       _ => panic!("Unsupported MMU write8 to address {:#06x}", index),
     };
+  }
+
+  pub fn set_flag(&mut self, address: usize, value: bool) {
+    let real_address = match address {
+      IO_BEG...IO_END => address - IO_BEG,
+
+      _ => panic!("Unsupported MMU flag address {:#06x}", address),
+    };
+
+    let index = real_address & 0xf8;
+    let bit_index = real_address & 0x07;
+
+    let current = self.io[index];
+
+    if value {
+      self.io[index] = current | (1 << bit_index);
+    } else {
+      self.io[index] = current & !(1 << bit_index);
+    }
+  }
+
+  pub fn get_flag(&self, address: usize) -> bool {
+    let real_address = match address {
+      IO_BEG...IO_END => address - IO_BEG,
+
+      _ => panic!("Unsupported MMU flag address {:#06x}", address),
+    };
+
+    let index = real_address & 0xf8;
+    let bit_index = real_address & 0x07;
+
+    let current = self.io[index];
+
+    (current & (1 << bit_index)) > 0
   }
 
   pub fn write16(&mut self, index: usize, value: u16) {
@@ -229,5 +265,27 @@ mod tests {
     let mut mmu = MMU::new(false);
 
     mmu.write8(ROMX_BEG, 1);
+  }
+
+  #[test]
+  fn set_flag() {
+    let mut mmu = MMU::new(false);
+
+    mmu.set_flag(FLAG_BOOT, true);
+    assert_eq!(mmu.io[FLAG_BOOT - IO_BEG], 1);
+
+    mmu.set_flag(FLAG_BOOT, false);
+    assert_eq!(mmu.io[FLAG_BOOT - IO_BEG], 0);
+  }
+
+  #[test]
+  fn get_flag() {
+    let mut mmu = MMU::new(false);
+    assert_eq!(mmu.get_flag(FLAG_BOOT), false);
+    mmu.set_flag(FLAG_BOOT, true);
+    assert_eq!(mmu.get_flag(FLAG_BOOT), true);
+
+    let mut mmu2 = MMU::new(true);
+    assert_eq!(mmu2.get_flag(FLAG_BOOT), true);
   }
 }

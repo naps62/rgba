@@ -10,6 +10,7 @@ pub mod cpu;
 mod debug;
 mod display;
 mod game_boy;
+mod gpu;
 mod mmu;
 
 fn main() {
@@ -22,5 +23,5 @@ fn main() {
 
   let game_boy = game_boy::GameBoy::new(cartridge_path);
 
-  // std::thread::sleep(Duration::new(10, 0));
+  std::thread::sleep(Duration::new(10, 0));
 }

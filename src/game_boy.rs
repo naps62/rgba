@@ -1,9 +1,11 @@
-use super::{cartridge, cpu, display, mmu};
+use super::{cartridge, cpu, display, gpu, mmu};
 
 #[allow(dead_code)]
 pub struct GameBoy {
+  mmu: mmu::MMU,
   cpu: cpu::CPU,
   cartridge: cartridge::Cartridge,
+  gpu: gpu::GPU,
   // pub display: display::Display,
   // video_ram: memory::Memory,
   // display: display::Display,
@@ -12,11 +14,11 @@ pub struct GameBoy {
 impl GameBoy {
   #[allow(dead_code)]
   pub fn new(cartridge_path: &str) -> GameBoy {
-    let mmu = mmu::MMU::new(true);
-
     GameBoy {
-      cpu: cpu::CPU::new(mmu),
+      mmu: mmu::MMU::new(true),
+      cpu: cpu::CPU::new(),
       cartridge: cartridge::Cartridge::new(cartridge_path),
+      gpu: gpu::GPU::new(),
       // display: display::Display::new(),
       // video_ram: memory::Memory::new(8 * 1024),
       // display: display::Display::new(),
