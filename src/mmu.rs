@@ -101,12 +101,17 @@ pub struct MMU {
 }
 
 impl MMU {
-  pub fn new() -> MMU {
-    let boot = fs::read("assets/boot_rom.bin").unwrap();
+  pub fn new(boot_rom: bool) -> MMU {
+    let boot = if boot_rom {
+      fs::read("assets/boot_rom.bin").unwrap()
+    } else {
+      Vec::new()
+    };
+
     println!("{:?}", boot);
 
     MMU {
-      booting: true,
+      booting: boot_rom,
       boot: boot,
       rom0: init_mem_bank!(ROM0_RANGE),
       romx: init_mem_bank!(ROMX_RANGE),
@@ -175,7 +180,7 @@ mod tests {
 
   #[test]
   fn read8_readable() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new(false);
 
     assert_eq!(mmu.read8(ROM0_BEG), 0);
     assert_eq!(mmu.read8(ROM0_END), 0);
@@ -198,7 +203,7 @@ mod tests {
 
   #[test]
   fn write8_writable() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new(false);
 
     mmu.write8(WRAM0_BEG, 1);
     assert_eq!(mmu.wram0[0], 1);
@@ -213,7 +218,7 @@ mod tests {
   #[test]
   #[should_panic]
   fn write8_rom0() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new(false);
 
     mmu.write8(ROM0_BEG, 1);
   }
@@ -221,7 +226,7 @@ mod tests {
   #[test]
   #[should_panic]
   fn write8_romx() {
-    let mut mmu = MMU::new();
+    let mut mmu = MMU::new(false);
 
     mmu.write8(ROMX_BEG, 1);
   }

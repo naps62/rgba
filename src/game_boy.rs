@@ -12,7 +12,7 @@ pub struct GameBoy {
 impl GameBoy {
   #[allow(dead_code)]
   pub fn new(cartridge_path: &str) -> GameBoy {
-    let mmu = mmu::MMU::new();
+    let mmu = mmu::MMU::new(true);
 
     GameBoy {
       cpu: cpu::CPU::new(mmu),

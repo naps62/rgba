@@ -1733,16 +1733,21 @@ mod tests {
     };
   }
 
+  fn new_test_cpu() -> CPU {
+    let mmu = MMU::new(false);
+    CPU::new(mmu)
+  }
+
   #[test]
   fn new_cpu() {
-    let cpu = CPU::new();
+    let cpu = new_test_cpu();
 
     assert_eq!(cpu.regs.read16(Register16::BC), 0);
   }
 
   #[test]
   fn opcode_nop() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0b0000_0000);
 
@@ -1751,7 +1756,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_ptr16_sp() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
     cpu.regs.set_sp(2047);
 
     exec!(cpu, 0b0000_1000, arg16 => 0xff90);
@@ -1761,7 +1766,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_r16_n16() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0x01, arg16 => 511);
     exec!(cpu, 0x11, arg16 => 1023);
@@ -1776,7 +1781,7 @@ mod tests {
 
   #[test]
   fn opcode_add_hl_r16() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ADD HL, BC
     cpu.regs.write16(HL, 128);
@@ -1804,7 +1809,7 @@ mod tests {
 
   #[test]
   fn opcode_add_hl_r16_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // carry from bit 11
     cpu.regs.write16(HL, 0b0000_1000_0000_0000);
@@ -1845,7 +1850,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_r16_a() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // LD BC, A
     cpu.regs.write8(A, 127);
@@ -1862,7 +1867,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_a_r16() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // LD BC, A
     cpu.mmu.write8(0xff90, 127);
@@ -1879,7 +1884,7 @@ mod tests {
 
   #[test]
   fn opcode_inc_r16() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // INC BC
     cpu.regs.write16(BC, 257);
@@ -1904,7 +1909,7 @@ mod tests {
 
   #[test]
   fn opcode_dec_r16() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // INC BC
     cpu.regs.write16(BC, 257);
@@ -1929,7 +1934,7 @@ mod tests {
 
   #[test]
   fn opcode_inc_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // INC B
     cpu.regs.set_b(1);
@@ -1972,7 +1977,7 @@ mod tests {
 
   #[test]
   fn opcode_inc_r8_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // NF is set to false
     cpu.regs.set_a(8);
@@ -2002,7 +2007,7 @@ mod tests {
 
   #[test]
   fn opcode_dec_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // DEC B
     cpu.regs.set_b(1);
@@ -2048,7 +2053,7 @@ mod tests {
 
   #[test]
   fn opcode_dec_r8_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // NF is set to true
     cpu.regs.set_a(8);
@@ -2078,7 +2083,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_r8_n8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // LD B, 1
     exec!(cpu, 0b00_000_110, arg8 => 1);
@@ -2116,7 +2121,7 @@ mod tests {
 
   #[test]
   fn opcode_rdca() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RLCA
     cpu.regs.set_a(0b0000_0010);
@@ -2131,7 +2136,7 @@ mod tests {
 
   #[test]
   fn opcode_rdca_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZH, HF and NF flags set to false
     cpu.regs.set_a(0b0000_0010);
@@ -2153,7 +2158,7 @@ mod tests {
 
   #[test]
   fn opcode_rda() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RLA
     cpu.regs.set_a(0b0000_0010);
@@ -2194,7 +2199,7 @@ mod tests {
 
   #[test]
   fn opcode_rda_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZH, HF and NF flags set to false
     cpu.regs.set_a(0b0000_0010);
@@ -2216,7 +2221,7 @@ mod tests {
 
   #[test]
   fn opcode_jr_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // new PC is incremented by N
     exec!(cpu, 0b0001_1000, arg8 => 0b0000_0011);
@@ -2225,7 +2230,7 @@ mod tests {
 
   #[test]
   fn opcode_jr_f_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // JR NZ, N increments by N if NZ
     cpu.regs.set_pc(0);
@@ -2278,7 +2283,7 @@ mod tests {
 
   #[test]
   fn opcode_ldi_hl_a() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(0xff90);
     cpu.regs.set_a(2);
@@ -2289,7 +2294,7 @@ mod tests {
 
   #[test]
   fn opcode_ldi_a_hl() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(128);
     cpu.mmu._load8(128, 2);
@@ -2300,7 +2305,7 @@ mod tests {
 
   #[test]
   fn opcode_ldd_hl_a() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(0xff90);
     cpu.regs.set_a(2);
@@ -2311,7 +2316,7 @@ mod tests {
 
   #[test]
   fn opcode_ldd_a_hl() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(128);
     cpu.mmu._load8(128, 2);
@@ -2322,7 +2327,7 @@ mod tests {
 
   #[test]
   fn opcode_daa() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // adds 0x06 to A if small digit is greater than 9
     cpu.regs.set_flag(NF, false);
@@ -2356,7 +2361,7 @@ mod tests {
 
   #[test]
   fn opcode_daa_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // HF flag is reset
     cpu.regs.set_flag(NF, false);
@@ -2396,7 +2401,7 @@ mod tests {
 
   #[test]
   fn opcode_cpl() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_a(1);
     exec!(cpu, 0b0010_1111);
@@ -2405,7 +2410,7 @@ mod tests {
 
   #[test]
   fn opcode_cpl_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_a(1);
     exec!(cpu, 0b0010_1111);
@@ -2415,7 +2420,7 @@ mod tests {
 
   #[test]
   fn opcode_scf() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0b0011_0111);
     assert_eq!(cpu.regs.get_flag(NF), false);
@@ -2425,7 +2430,7 @@ mod tests {
 
   #[test]
   fn opcode_ccf() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0b0011_1111);
     assert_eq!(cpu.regs.get_flag(NF), false);
@@ -2445,7 +2450,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_b_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0100_0000);
@@ -2483,7 +2488,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_c_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0100_1000);
@@ -2521,7 +2526,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_d_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0101_0000);
@@ -2559,7 +2564,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_e_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0101_1000);
@@ -2597,7 +2602,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_h_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0110_0000);
@@ -2635,7 +2640,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_l_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0110_1000);
@@ -2673,7 +2678,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_hl_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(0xff90);
 
@@ -2708,7 +2713,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_a_r8() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_b(1);
     exec!(cpu, 0b0111_1000);
@@ -2746,7 +2751,7 @@ mod tests {
 
   #[test]
   fn opcode_add() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ADD A, B
     cpu.regs.set_a(1);
@@ -2805,7 +2810,7 @@ mod tests {
 
   #[test]
   fn opcode_add_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -2834,7 +2839,7 @@ mod tests {
 
   #[test]
   fn opcode_adc() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ADC A, B
     cpu.regs.set_a(1);
@@ -2892,7 +2897,7 @@ mod tests {
 
   #[test]
   fn opcode_adc_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -2921,7 +2926,7 @@ mod tests {
 
   #[test]
   fn opcode_sub() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SUB A, B
     cpu.regs.set_a(5);
@@ -2979,7 +2984,7 @@ mod tests {
 
   #[test]
   fn opcode_sub_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -3008,7 +3013,7 @@ mod tests {
 
   #[test]
   fn opcode_sbc() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SBC A, B
     cpu.regs.set_a(5);
@@ -3066,7 +3071,7 @@ mod tests {
 
   #[test]
   fn opcode_sbc_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -3095,7 +3100,7 @@ mod tests {
 
   #[test]
   fn opcode_and() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // AND A, B
     cpu.regs.set_a(5);
@@ -3153,7 +3158,7 @@ mod tests {
 
   #[test]
   fn opcode_and_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -3182,7 +3187,7 @@ mod tests {
 
   #[test]
   fn opcode_xor() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // XOR A, B
     cpu.regs.set_a(5);
@@ -3240,7 +3245,7 @@ mod tests {
 
   #[test]
   fn opcode_xor_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -3269,7 +3274,7 @@ mod tests {
 
   #[test]
   fn opcode_or() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // OR A, B
     cpu.regs.set_a(5);
@@ -3327,7 +3332,7 @@ mod tests {
 
   #[test]
   fn opcode_or_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
@@ -3356,7 +3361,7 @@ mod tests {
 
   #[test]
   fn opcode_pop() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // POP BC
     cpu.regs.set_sp(1024);
@@ -3389,7 +3394,7 @@ mod tests {
 
   #[test]
   fn opcode_push() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // PUSH BC
     cpu.regs.set_sp(0xff90);
@@ -3422,7 +3427,7 @@ mod tests {
 
   #[test]
   fn opcode_ret_f() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RET NZ if Z flag is not set
     cpu.regs.set_pc(0);
@@ -3499,7 +3504,7 @@ mod tests {
 
   #[test]
   fn opcode_ret() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_sp(0xff90);
     cpu.push(666);
@@ -3510,7 +3515,7 @@ mod tests {
 
   #[test]
   fn opcode_reti() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_sp(0xff90);
     cpu.push(666);
@@ -3522,7 +3527,7 @@ mod tests {
 
   #[test]
   fn opcode_jp_f_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // JP NZ, N when ZF is not set
     cpu.regs.set_pc(0);
@@ -3575,7 +3580,7 @@ mod tests {
 
   #[test]
   fn opcode_jp_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0b1100_0011, arg8 => 123);
     assert_eq!(cpu.regs.pc(), 123);
@@ -3583,7 +3588,7 @@ mod tests {
 
   #[test]
   fn opcode_call_f_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // CALL NZ, N when ZF is not set
     cpu.regs.set_pc(0);
@@ -3656,7 +3661,7 @@ mod tests {
 
   #[test]
   fn opcode_call_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // CALL C, N when CF is set
     cpu.regs.set_sp(0xff90);
@@ -3668,7 +3673,7 @@ mod tests {
 
   #[test]
   fn opcode_add_sp_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_sp(1);
     exec!(cpu, 0b1110_1000, arg8 => 3);
@@ -3677,7 +3682,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_hl_sp_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_sp(1);
     exec!(cpu, 0b1111_1000, arg8 => 3);
@@ -3686,7 +3691,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_ff00_n_a() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_a(1);
     exec!(cpu, 0b1110_0000, arg8 => 0x80);
@@ -3695,7 +3700,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_a_ff00_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.mmu.write8(0xFF80, 1);
     exec!(cpu, 0b1111_0000, arg8 => 0x80);
@@ -3704,7 +3709,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_c_a() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_a(1);
     cpu.regs.set_c(0x80);
@@ -3714,7 +3719,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_a_c() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_c(0x80);
     cpu.mmu.write8(0xFF80, 1);
@@ -3724,7 +3729,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_n_a() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_a(1);
     exec!(cpu, 0b1110_1010, arg16 => 0xff90);
@@ -3733,7 +3738,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_a_n() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.mmu.write16(0xff90, 1);
     exec!(cpu, 0b1111_1010, arg16 => 0xff90);
@@ -3742,7 +3747,7 @@ mod tests {
 
   #[test]
   fn opcode_jp_hl() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(123);
     exec!(cpu, 0b1110_1001);
@@ -3751,7 +3756,7 @@ mod tests {
 
   #[test]
   fn opcode_ld_sp_hl() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     cpu.regs.set_hl(123);
     exec!(cpu, 0b1111_1001);
@@ -3760,7 +3765,7 @@ mod tests {
 
   #[test]
   fn opcode_di() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0b1111_0011);
     assert_eq!(cpu.interrupts, 0);
@@ -3768,7 +3773,7 @@ mod tests {
 
   #[test]
   fn opcode_ei() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     exec!(cpu, 0b1111_1011);
     assert_eq!(cpu.interrupts, 1);
@@ -3776,7 +3781,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_rlc() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RLC B
     cpu.regs.set_b(0b0000_0010);
@@ -3822,7 +3827,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_rrc() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RRC B
     cpu.regs.set_b(0b0000_1010);
@@ -3876,7 +3881,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_rl() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RL B
     cpu.regs.set_b(0b0000_0010);
@@ -3923,7 +3928,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_rr() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RR B
     cpu.regs.set_b(0b0000_1010);
@@ -3969,7 +3974,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_sla_d() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SLA B
     cpu.regs.set_b(0b0000_0001);
@@ -4015,7 +4020,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_sla_d_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // Sets ZF flag if result is 0
     cpu.regs.set_b(0b1000_0000);
@@ -4030,7 +4035,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_sra_d() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SRA B
     cpu.regs.set_b(0b0000_0010);
@@ -4081,7 +4086,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_sra_d_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // Sets ZF flag if result is 0
     cpu.regs.set_b(0b0000_0001);
@@ -4096,7 +4101,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_swap_d() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SWAP B
     cpu.regs.set_b(0x12);
@@ -4142,7 +4147,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_srl_d() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SRL B
     cpu.regs.set_b(0b0000_0010);
@@ -4193,7 +4198,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_srl_d_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // Sets ZF flag if result is 0
     cpu.regs.set_b(0b0000_0001);
@@ -4208,7 +4213,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_bit_n_d_flags() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // BIT N, B sets ZF if bit N is zero
     cpu.regs.set_b(0b0000_0000);
@@ -4234,7 +4239,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_res_n_d() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // RES N, B
     cpu.regs.set_b(0xFF);
@@ -4250,7 +4255,7 @@ mod tests {
 
   #[test]
   fn opcode_cb_set_n_d() {
-    let mut cpu = CPU::new();
+    let mut cpu = new_test_cpu();
 
     // SET N, B
     cpu.regs.set_b(0x00);
