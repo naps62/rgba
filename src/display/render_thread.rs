@@ -1,40 +1,37 @@
-use glium::{glutin, Display, Frame, Surface};
-use schedule_recv::oneshot_ms;
+use glium::{glutin, Display, Frame};
+use glutin::{dpi::LogicalSize, Event, EventsLoop};
 use std::{thread, time};
 
 pub fn spawn() -> thread::JoinHandle<()> {
   thread::spawn(move || {
-    let display = setup_display();
+    use glutin::WindowBuilder;
 
-    render_loop(display);
+    let size = LogicalSize::new(800.0, 600.0);
+
+    let mut events_loop = EventsLoop::new();
+    let window_builder = WindowBuilder::new()
+      .with_dimensions(size)
+      .with_title("RGBA");
+
+    let context = glutin::ContextBuilder::new();
+
+    let display = Display::new(window_builder, context, &events_loop).unwrap();
+
+    render_loop(&mut events_loop, display);
   })
 }
 
-fn setup_display() -> Display {
-  let size = glutin::dpi::LogicalSize::new(800.0, 600.0);
-
-  let events_loop = glutin::EventsLoop::new();
-  let window_builder = glutin::WindowBuilder::new()
-    .with_dimensions(size)
-    .with_title("RGBA");
-
-  let context = glutin::ContextBuilder::new();
-
-  Display::new(window_builder, context, &events_loop).unwrap()
-}
-
-fn render_loop(display: Display) {
+fn render_loop(events_loop: &mut EventsLoop, display: Display) {
+  use glium::Surface;
   let mut frames = 0;
   let mut start = time::Instant::now();
 
   loop {
-    let frame_start = time::Instant::now();
+    events_loop.poll_events(handle_event);
 
     let mut frame = display.draw();
     render_frame(&mut frame);
-    frame.finish();
-
-    let frame_duration = frame_start.elapsed().as_millis() as u64;
+    frame.finish().expect("could not finish frame");
 
     let full_duration = start.elapsed().as_secs();
     if full_duration >= 1 {
@@ -49,5 +46,20 @@ fn render_loop(display: Display) {
 }
 
 fn render_frame(frame: &mut Frame) {
+  use glium::Surface;
+
   frame.clear_color(1.0, 0.0, 0.0, 0.5);
+}
+
+fn handle_event(event: Event) {
+  use glutin::{DeviceEvent::Key, ElementState, Event};
+
+  match event {
+    Event::DeviceEvent {
+      event: Key(key),
+      ..
+    } => println!("key {:?}", key),
+
+    _ => {}
+  }
 }

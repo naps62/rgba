@@ -6,9 +6,9 @@ pub struct GameBoy {
   cpu: cpu::CPU,
   cartridge: cartridge::Cartridge,
   gpu: gpu::GPU,
+  display: display::Display,
   // pub display: display::Display,
   // video_ram: memory::Memory,
-  // display: display::Display,
 }
 
 impl GameBoy {
@@ -19,9 +19,8 @@ impl GameBoy {
       cpu: cpu::CPU::new(),
       cartridge: cartridge::Cartridge::new(cartridge_path),
       gpu: gpu::GPU::new(),
-      // display: display::Display::new(),
+      display: display::Display::new(),
       // video_ram: memory::Memory::new(8 * 1024),
-      // display: display::Display::new(),
     }
   }
 }
