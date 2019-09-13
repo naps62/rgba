@@ -10,3 +10,4 @@ zip = "0.5"
 glium = "0.25.0"
 schedule_recv = "0.1.0"
 clap = {version = "2.33.0", features = ["yaml"]}
+crossbeam-channel = "0.3"

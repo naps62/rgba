@@ -11,20 +11,20 @@ type MemRange = (usize, usize);
 // Restart and Interrupt vectors
 const BOOT_BEG: usize = 0x0000;
 const BOOT_END: usize = 0x00ff;
-const BOOT_RANGE: MemRange = (BOOT_BEG, BOOT_END);
+// const BOOT_RANGE: MemRange = (BOOT_BEG, BOOT_END);
 
 // ROM, bank 0
 const ROM0_BEG: usize = 0x0000;
 const ROM0_END: usize = 0x3fff;
 const ROM0_RANGE: MemRange = (ROM0_BEG, ROM0_END);
 
-const BIOS_BEG: usize = 0x0000;
-const BIOS_END: usize = 0x00ff;
-const BIOS_RANGE: MemRange = (BIOS_BEG, BIOS_END);
+// const BIOS_BEG: usize = 0x0000;
+// const BIOS_END: usize = 0x00ff;
+// const BIOS_RANGE: MemRange = (BIOS_BEG, BIOS_END);
 
-const HEADER_BEG: usize = 0x0100;
-const HEADER_END: usize = 0x014f;
-const RANGE_HEADER: MemRange = (HEADER_BEG, HEADER_END);
+// const HEADER_BEG: usize = 0x0100;
+// const HEADER_END: usize = 0x014f;
+// const RANGE_HEADER: MemRange = (HEADER_BEG, HEADER_END);
 
 // ROM, switchable banks
 const ROMX_BEG: usize = 0x4000;
@@ -32,9 +32,9 @@ const ROMX_END: usize = 0x7fff;
 const ROMX_RANGE: MemRange = (ROMX_BEG, ROMX_END);
 
 // Video RAM
-const VRAM_BEG: usize = 0x8000;
-const VRAM_END: usize = 0x9fff;
-const VRAM_RANGE: MemRange = (VRAM_BEG, VRAM_END);
+// const VRAM_BEG: usize = 0x8000;
+// const VRAM_END: usize = 0x9fff;
+// const VRAM_RANGE: MemRange = (VRAM_BEG, VRAM_END);
 
 // External (cartridge) RAM
 const ERAM_BEG: usize = 0xa000;
@@ -52,18 +52,18 @@ const WRAMX_END: usize = 0xdfff;
 const WRAMX_RANGE: MemRange = (WRAMX_BEG, WRAMX_END);
 
 // Echo RAM (reserved, do not use)
-const ECHO_BEG: usize = 0xe000;
-const ECHO_END: usize = 0xfdff;
-const ECHO_RANGE: MemRange = (ECHO_BEG, ECHO_END);
+// const ECHO_BEG: usize = 0xe000;
+// const ECHO_END: usize = 0xfdff;
+// const ECHO_RANGE: MemRange = (ECHO_BEG, ECHO_END);
 
 // OAM (Object Attribute Memory)
-const OAM_BEG: usize = 0xfe00;
-const OAM_END: usize = 0xfe9f;
-const OAM_RANGE: MemRange = (OAM_BEG, OAM_END);
+// const OAM_BEG: usize = 0xfe00;
+// const OAM_END: usize = 0xfe9f;
+// const OAM_RANGE: MemRange = (OAM_BEG, OAM_END);
 
 // Unused memory range
-const UNUSED_BEG: usize = 0xfea0;
-const UNUSED_END: usize = 0xfeff;
+// const UNUSED_BEG: usize = 0xfea0;
+// const UNUSED_END: usize = 0xfeff;
 
 // IO
 const IO_BEG: usize = 0xff00;
@@ -75,7 +75,7 @@ const ZRAM_BEG: usize = 0xff80;
 const ZRAM_END: usize = 0xfffe;
 const ZRAM_RANGE: MemRange = (ZRAM_BEG, ZRAM_END);
 
-const INTERRUPT: usize = 0xffff;
+// const INTERRUPT: usize = 0xffff;
 
 const FLAG_BOOT: usize = 0xff50;
 
@@ -121,7 +121,7 @@ impl MMU {
       zram: init_mem_bank!(ZRAM_RANGE),
     };
 
-    if (boot_rom) {
+    if boot_rom {
       mmu.set_flag(FLAG_BOOT, true);
     }
 

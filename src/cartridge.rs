@@ -1,8 +1,9 @@
 use std::fs;
 
-#[macro_use]
-use super::debug;
+// #[macro_use]
+// use super::debug;
 
+#[allow(dead_code)]
 pub struct Cartridge {
   data: Vec<u8>,
 }

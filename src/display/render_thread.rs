@@ -1,8 +1,11 @@
+extern crate crossbeam_channel;
+
+use crossbeam_channel::Sender;
 use glium::{glutin, Display, Frame};
 use glutin::{dpi::LogicalSize, Event, EventsLoop};
 use std::{thread, time};
 
-pub fn spawn() -> thread::JoinHandle<()> {
+pub fn spawn(input_sender: Sender<Event>) -> thread::JoinHandle<()> {
   thread::spawn(move || {
     use glutin::WindowBuilder;
 
@@ -17,17 +20,19 @@ pub fn spawn() -> thread::JoinHandle<()> {
 
     let display = Display::new(window_builder, context, &events_loop).unwrap();
 
-    render_loop(&mut events_loop, display);
+    render_loop(display, &mut events_loop, input_sender);
   })
 }
 
-fn render_loop(events_loop: &mut EventsLoop, display: Display) {
-  use glium::Surface;
+fn render_loop(display: Display, events_loop: &mut EventsLoop, input_sender: Sender<Event>) {
   let mut frames = 0;
   let mut start = time::Instant::now();
 
   loop {
-    events_loop.poll_events(handle_event);
+    events_loop.poll_events(|event| match input_sender.send(event) {
+      Err(e) => println!("{:?} {}", input_sender, e),
+      _ => (),
+    });
 
     let mut frame = display.draw();
     render_frame(&mut frame);
@@ -49,17 +54,4 @@ fn render_frame(frame: &mut Frame) {
   use glium::Surface;
 
   frame.clear_color(1.0, 0.0, 0.0, 0.5);
-}
-
-fn handle_event(event: Event) {
-  use glutin::{DeviceEvent::Key, ElementState, Event};
-
-  match event {
-    Event::DeviceEvent {
-      event: Key(key),
-      ..
-    } => println!("key {:?}", key),
-
-    _ => {}
-  }
 }
