@@ -1576,7 +1576,6 @@ impl CPU {
 
   fn alu_bit(&mut self, n: u8, v: u8) {
     let r = v & (1 << (n as u32)) == 0;
-    println!("{}", r);
 
     self.regs.set_flag(NF, false);
     self.regs.set_flag(HF, true);
