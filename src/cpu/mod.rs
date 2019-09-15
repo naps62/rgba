@@ -1,3 +1,4 @@
+pub mod opcodes;
 pub mod registers;
 
 use super::mmu::MMU;
@@ -27,7 +28,7 @@ impl CPU {
     let current_pc = self.regs.read16(PC);
 
     let byte = mmu.read8(current_pc as usize);
-    println!("exec {:#2x} {:#2x}", current_pc, byte);
+
     let new_pc = self.exec_opcode(byte, current_pc, mmu);
 
     self.regs.set_pc(new_pc);

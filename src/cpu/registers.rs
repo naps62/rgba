@@ -26,6 +26,7 @@ pub enum Register16 {
   HL,
   SP,
   PC,
+  AF,
 }
 
 #[derive(Debug)]
@@ -96,6 +97,7 @@ impl Registers {
       HL => self.hl(),
       SP => self.sp(),
       PC => self.pc(),
+      AF => self.af(),
     }
   }
 
@@ -163,6 +165,7 @@ impl Registers {
       HL => self.set_hl(value),
       SP => self.set_sp(value),
       PC => self.set_pc(value),
+      AF => self.set_af(value),
     }
   }
 
