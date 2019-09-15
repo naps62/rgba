@@ -130,13 +130,13 @@ impl MMU {
 
   pub fn read8(&self, index: usize) -> u8 {
     match index {
-      BOOT_BEG...BOOT_END if self.get_flag(FLAG_BOOT) => self.boot[index],
-      ROM0_BEG...ROM0_END => self.rom0[index],
-      ROMX_BEG...ROMX_END => self.romx[index - ROMX_BEG],
-      ERAM_BEG...ERAM_END => self.eram[index - ERAM_BEG],
-      WRAM0_BEG...WRAM0_END => self.wram0[index - WRAM0_BEG],
-      WRAMX_BEG...WRAMX_END => self.wramx[index - WRAMX_BEG],
-      ZRAM_BEG...ZRAM_END => self.zram[index - ZRAM_BEG],
+      BOOT_BEG..=BOOT_END if self.get_flag(FLAG_BOOT) => self.boot[index],
+      ROM0_BEG..=ROM0_END => self.rom0[index],
+      ROMX_BEG..=ROMX_END => self.romx[index - ROMX_BEG],
+      ERAM_BEG..=ERAM_END => self.eram[index - ERAM_BEG],
+      WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG],
+      WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG],
+      ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG],
       _ => panic!("Unsupported MMU read8 to address 0x{:x}", index),
     }
   }
@@ -147,16 +147,16 @@ impl MMU {
 
   pub fn write8(&mut self, index: usize, value: u8) {
     match index {
-      WRAM0_BEG...WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
-      WRAMX_BEG...WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
-      ZRAM_BEG...ZRAM_END => self.zram[index - ZRAM_BEG] = value,
+      WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
+      WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
+      ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG] = value,
       _ => panic!("Unsupported MMU write8 to address {:#06x}", index),
     };
   }
 
   pub fn set_flag(&mut self, address: usize, value: bool) {
     let real_address = match address {
-      IO_BEG...IO_END => address - IO_BEG,
+      IO_BEG..=IO_END => address - IO_BEG,
 
       _ => panic!("Unsupported MMU flag address {:#06x}", address),
     };
@@ -175,7 +175,7 @@ impl MMU {
 
   pub fn get_flag(&self, address: usize) -> bool {
     let real_address = match address {
-      IO_BEG...IO_END => address - IO_BEG,
+      IO_BEG..=IO_END => address - IO_BEG,
 
       _ => panic!("Unsupported MMU flag address {:#06x}", address),
     };
@@ -197,8 +197,8 @@ impl MMU {
   // currently used in CPU tests to set ROM memory
   pub fn _load8(&mut self, index: usize, value: u8) {
     match index {
-      ROM0_BEG...ROM0_END => self.rom0[index] = value,
-      ROMX_BEG...ROMX_END => self.rom0[index] = value,
+      ROM0_BEG..=ROM0_END => self.rom0[index] = value,
+      ROMX_BEG..=ROMX_END => self.rom0[index] = value,
 
       _ => panic!("Unsupported MMU _load to address {:#06x}", index),
     };

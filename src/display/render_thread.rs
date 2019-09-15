@@ -1,5 +1,3 @@
-extern crate crossbeam_channel;
-
 use crossbeam_channel::Sender;
 use glium::{glutin, Display, Frame};
 use glutin::{dpi::LogicalSize, Event, EventsLoop};
@@ -29,9 +27,8 @@ fn render_loop(display: Display, events_loop: &mut EventsLoop, input_sender: Sen
   let mut start = time::Instant::now();
 
   loop {
-    events_loop.poll_events(|event| match input_sender.send(event) {
-      Err(e) => println!("{:?} {}", input_sender, e),
-      _ => (),
+    events_loop.poll_events(|event| {
+      input_sender.send(event);
     });
 
     let mut frame = display.draw();
