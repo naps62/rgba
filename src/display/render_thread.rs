@@ -28,7 +28,7 @@ fn render_loop(display: Display, events_loop: &mut EventsLoop, input_sender: Sen
 
   loop {
     events_loop.poll_events(|event| {
-      input_sender.send(event);
+      input_sender.send(event).expect("Failed to send event");
     });
 
     let mut frame = display.draw();

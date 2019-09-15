@@ -27,6 +27,7 @@ impl CPU {
     let current_pc = self.regs.read16(PC);
 
     let byte = mmu.read8(current_pc as usize);
+    println!("exec {:#2x} {:#2x}", current_pc, byte);
     let new_pc = self.exec_opcode(byte, current_pc, mmu);
 
     self.regs.set_pc(new_pc);
@@ -413,7 +414,9 @@ impl CPU {
 
       // JR F, N
       0b0010_0000 => {
+        println!("flag value: {}", self.regs.get_flag(ZF));
         if !self.regs.get_flag(ZF) {
+          println!("jumping");
           pc + self.read_arg8(mmu) as u16
         } else {
           pc + 2
@@ -1124,6 +1127,7 @@ impl CPU {
   }
 
   fn exec_cb(&mut self, opcode: u8, pc: u16, mmu: &mut MMU) -> u16 {
+    println!("exec_cb {:#2x}", opcode);
     match opcode {
       // RLC D
       0b0000_0000 => {
@@ -1418,7 +1422,6 @@ impl CPU {
         let n = self.cb_alu_n(opcode);
         let reg = self.cb_alu_reg(opcode);
         let v = self.regs.read8(reg);
-        println!("{} {}", n, v);
 
         self.alu_bit(n, v);
       }
@@ -1576,10 +1579,13 @@ impl CPU {
 
   fn alu_bit(&mut self, n: u8, v: u8) {
     let r = v & (1 << (n as u32)) == 0;
+    println!("alu bit {} {} = {}", n, v, r);
 
     self.regs.set_flag(NF, false);
     self.regs.set_flag(HF, true);
-    self.regs.set_flag(ZF, r);
+    if r {
+      self.regs.set_flag(ZF, true)
+    };
   }
 
   // implementation taken from
@@ -1700,6 +1706,7 @@ fn opcode_match(opcode: u8, mask: u8, expectation: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+  use super::super::gpu;
   use super::*;
 
   macro_rules! exec {
@@ -1731,7 +1738,11 @@ mod tests {
   }
 
   fn new_test_cpu() -> (CPU, MMU) {
-    (CPU::new(), MMU::new(false))
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let gpu = Rc::new(RefCell::new(gpu::GPU::new()));
+    (CPU::new(), MMU::new(false, gpu, vec![0; 1024 * 10]))
   }
 
   #[test]
@@ -4216,7 +4227,8 @@ mod tests {
     exec_cb!(cpu, mmu, 0b0101_0000);
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
-    // BIT N, C resets ZF if bit N is 1
+    // BIT N, C does not change ZF if bit N is 1
+    cpu.regs.set_flag(ZF, false);
     cpu.regs.set_c(0b0000_0100);
     exec_cb!(cpu, mmu, 0b0101_0001);
     assert_eq!(cpu.regs.get_flag(ZF), false);
@@ -4227,7 +4239,8 @@ mod tests {
     exec_cb!(cpu, mmu, 0b0111_1110);
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
-    // BIT N, A resets ZF if bit N is 1
+    // BIT N, A does not change ZF if bit N is 1
+    cpu.regs.set_flag(ZF, false);
     cpu.regs.set_a(0b1000_0000);
     exec_cb!(cpu, mmu, 0b0111_1111);
     assert_eq!(cpu.regs.get_flag(ZF), false);

@@ -1,6 +1,3 @@
-extern crate crossbeam_channel;
-extern crate glium;
-
 use crossbeam_channel::Receiver;
 use std::thread;
 

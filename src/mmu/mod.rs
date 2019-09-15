@@ -1,4 +1,8 @@
+use std::cell::RefCell;
 use std::fs;
+use std::rc::Rc;
+
+use super::gpu;
 
 // note: memory is little-endian
 // when reading a 2 byte number, we need to invert the two bytes
@@ -16,7 +20,7 @@ const BOOT_END: usize = 0x00ff;
 // ROM, bank 0
 const ROM0_BEG: usize = 0x0000;
 const ROM0_END: usize = 0x3fff;
-const ROM0_RANGE: MemRange = (ROM0_BEG, ROM0_END);
+// const ROM0_RANGE: MemRange = (ROM0_BEG, ROM0_END);
 
 // const BIOS_BEG: usize = 0x0000;
 // const BIOS_END: usize = 0x00ff;
@@ -29,11 +33,11 @@ const ROM0_RANGE: MemRange = (ROM0_BEG, ROM0_END);
 // ROM, switchable banks
 const ROMX_BEG: usize = 0x4000;
 const ROMX_END: usize = 0x7fff;
-const ROMX_RANGE: MemRange = (ROMX_BEG, ROMX_END);
+// const ROMX_RANGE: MemRange = (ROMX_BEG, ROMX_END);
 
 // Video RAM
-// const VRAM_BEG: usize = 0x8000;
-// const VRAM_END: usize = 0x9fff;
+const VRAM_BEG: usize = 0x8000;
+const VRAM_END: usize = 0x9fff;
 // const VRAM_RANGE: MemRange = (VRAM_BEG, VRAM_END);
 
 // External (cartridge) RAM
@@ -93,8 +97,8 @@ macro_rules! init_mem_bank {
 
 pub struct MMU {
   boot: Vec<u8>,
-  rom0: declare_mem_bank!(ROM0_RANGE),
-  romx: declare_mem_bank!(ROMX_RANGE),
+  cartridge: Vec<u8>,
+  gpu: Rc<RefCell<gpu::GPU>>,
   eram: declare_mem_bank!(ERAM_RANGE),
   wram0: declare_mem_bank!(WRAM0_RANGE),
   wramx: declare_mem_bank!(WRAMX_RANGE),
@@ -103,7 +107,7 @@ pub struct MMU {
 }
 
 impl MMU {
-  pub fn new(boot_rom: bool) -> MMU {
+  pub fn new(boot_rom: bool, gpu: Rc<RefCell<gpu::GPU>>, cartridge: Vec<u8>) -> MMU {
     let boot = if boot_rom {
       fs::read("assets/boot_rom.bin").unwrap()
     } else {
@@ -112,8 +116,8 @@ impl MMU {
 
     let mut mmu = MMU {
       boot: boot,
-      rom0: init_mem_bank!(ROM0_RANGE),
-      romx: init_mem_bank!(ROMX_RANGE),
+      cartridge: cartridge,
+      gpu: gpu,
       eram: init_mem_bank!(ERAM_RANGE),
       wram0: init_mem_bank!(WRAM0_RANGE),
       wramx: init_mem_bank!(WRAMX_RANGE),
@@ -131,9 +135,10 @@ impl MMU {
   pub fn read8(&self, index: usize) -> u8 {
     match index {
       BOOT_BEG..=BOOT_END if self.get_flag(FLAG_BOOT) => self.boot[index],
-      ROM0_BEG..=ROM0_END => self.rom0[index],
-      ROMX_BEG..=ROMX_END => self.romx[index - ROMX_BEG],
+      ROM0_BEG..=ROM0_END => self.cartridge[index],
+      ROMX_BEG..=ROMX_END => self.cartridge[index - ROMX_BEG],
       ERAM_BEG..=ERAM_END => self.eram[index - ERAM_BEG],
+      VRAM_BEG..=VRAM_END => self.gpu.borrow().read8(index - VRAM_BEG),
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG],
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG],
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG],
@@ -147,6 +152,7 @@ impl MMU {
 
   pub fn write8(&mut self, index: usize, value: u8) {
     match index {
+      VRAM_BEG..=VRAM_END => self.gpu.borrow_mut().write8(index - VRAM_BEG, value),
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG] = value,
@@ -194,14 +200,13 @@ impl MMU {
   }
 
   // load a value into write-only memory
-  // currently used in CPU tests to set ROM memory
+  // current used in CPU tests to set ROM memory
   pub fn _load8(&mut self, index: usize, value: u8) {
     match index {
-      ROM0_BEG..=ROM0_END => self.rom0[index] = value,
-      ROMX_BEG..=ROMX_END => self.rom0[index] = value,
-
+      ROM0_BEG..=ROM0_END => self.cartridge[index] = value,
+      ROMX_BEG..=ROMX_END => self.cartridge[index] = value,
       _ => panic!("Unsupported MMU _load to address {:#06x}", index),
-    };
+    }
   }
 
   pub fn _load16(&mut self, index: usize, value: u16) {
@@ -214,9 +219,16 @@ impl MMU {
 mod tests {
   use super::*;
 
+  macro_rules! instantiate_mmu {
+    () => {{
+      let gpu = Rc::new(RefCell::new(gpu::GPU::new()));
+      MMU::new(false, gpu, vec![0; 1024 * 32])
+    }};
+  }
+
   #[test]
   fn read8_readable() {
-    let mut mmu = MMU::new(false);
+    let mut mmu = instantiate_mmu!();
 
     assert_eq!(mmu.read8(ROM0_BEG), 0);
     assert_eq!(mmu.read8(ROM0_END), 0);
@@ -239,7 +251,7 @@ mod tests {
 
   #[test]
   fn write8_writable() {
-    let mut mmu = MMU::new(false);
+    let mut mmu = instantiate_mmu!();
 
     mmu.write8(WRAM0_BEG, 1);
     assert_eq!(mmu.wram0[0], 1);
@@ -254,7 +266,7 @@ mod tests {
   #[test]
   #[should_panic]
   fn write8_rom0() {
-    let mut mmu = MMU::new(false);
+    let mut mmu = instantiate_mmu!();
 
     mmu.write8(ROM0_BEG, 1);
   }
@@ -262,14 +274,14 @@ mod tests {
   #[test]
   #[should_panic]
   fn write8_romx() {
-    let mut mmu = MMU::new(false);
+    let mut mmu = instantiate_mmu!();
 
     mmu.write8(ROMX_BEG, 1);
   }
 
   #[test]
   fn set_flag() {
-    let mut mmu = MMU::new(false);
+    let mut mmu = instantiate_mmu!();
 
     mmu.set_flag(FLAG_BOOT, true);
     assert_eq!(mmu.io[FLAG_BOOT - IO_BEG], 1);
@@ -280,12 +292,9 @@ mod tests {
 
   #[test]
   fn get_flag() {
-    let mut mmu = MMU::new(false);
+    let mut mmu = instantiate_mmu!();
     assert_eq!(mmu.get_flag(FLAG_BOOT), false);
     mmu.set_flag(FLAG_BOOT, true);
     assert_eq!(mmu.get_flag(FLAG_BOOT), true);
-
-    let mut mmu2 = MMU::new(true);
-    assert_eq!(mmu2.get_flag(FLAG_BOOT), true);
   }
 }
