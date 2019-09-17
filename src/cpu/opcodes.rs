@@ -58,12 +58,12 @@ pub enum Arg {
   Addr16,
   Imm8,
   Imm16,
-  PtrHL,
+  PtrReg8(registers::Register8),
+  PtrReg16(registers::Register16),
   Reg8(registers::Register8),
   Reg16(registers::Register16),
   SPPlusImm8,
   FF00PlusImm8,
-  PtrC,
 }
 
 #[derive(Debug, PartialEq)]
@@ -111,10 +111,10 @@ pub fn decode(byte: u8) -> Opcode {
     0b0001_0000 => STOP,
     0b0001_1000 => JUMP(Always, Imm8),
     _ if op_match(byte, 0b1110_0111, 0b0010_0000) => JUMP(condition(byte, 3), Imm8),
-    0b0010_0010 => LDI(PtrHL, Reg8(A)),
-    0b0010_1010 => LDI(Reg8(A), PtrHL),
-    0b0011_0010 => LDD(PtrHL, Reg8(A)),
-    0b0011_1010 => LDD(Reg8(A), PtrHL),
+    0b0010_0010 => LDI(PtrReg16(HL), Reg8(A)),
+    0b0010_1010 => LDI(Reg8(A), PtrReg16(HL)),
+    0b0011_0010 => LDD(PtrReg16(HL), Reg8(A)),
+    0b0011_1010 => LDD(Reg8(A), PtrReg16(HL)),
     0b0010_0111 => DAA,
     0b0010_1111 => CPL,
     0b0011_0111 => SCF,
@@ -139,8 +139,8 @@ pub fn decode(byte: u8) -> Opcode {
     0b1111_1000 => LD(Reg16(HL), SPPlusImm8),
     0b1110_0000 => LD(FF00PlusImm8, Reg8(A)),
     0b1111_0000 => LD(Reg8(A), FF00PlusImm8),
-    0b1110_0010 => LD(PtrC, Reg8(A)),
-    0b1111_0010 => LD(Reg8(A), PtrC),
+    0b1110_0010 => LD(PtrReg8(C), Reg8(A)),
+    0b1111_0010 => LD(Reg8(A), PtrReg8(C)),
     0b1110_1010 => LD(Addr16, Reg8(A)),
     0b1111_1010 => LD(Reg8(A), Addr16),
     0b1110_1001 => JUMP(Always, Reg16(HL)),
@@ -197,7 +197,7 @@ fn destination(byte: u8, index: usize) -> Arg {
     3 => Reg8(E),
     4 => Reg8(H),
     5 => Reg8(L),
-    6 => PtrHL,
+    6 => PtrReg16(HL),
     7 => Reg8(A),
     _ => unreachable!(),
   }
@@ -309,7 +309,7 @@ mod test {
     assert_decode!(0b0001_1100, INC(Reg8(E)));
     assert_decode!(0b0010_0100, INC(Reg8(H)));
     assert_decode!(0b0010_1100, INC(Reg8(L)));
-    assert_decode!(0b0011_0100, INC(PtrHL));
+    assert_decode!(0b0011_0100, INC(PtrReg16(HL)));
     assert_decode!(0b0011_1100, INC(Reg8(A)));
   }
 
@@ -321,7 +321,7 @@ mod test {
     assert_decode!(0b0001_1101, DEC(Reg8(E)));
     assert_decode!(0b0010_0101, DEC(Reg8(H)));
     assert_decode!(0b0010_1101, DEC(Reg8(L)));
-    assert_decode!(0b0011_0101, DEC(PtrHL));
+    assert_decode!(0b0011_0101, DEC(PtrReg16(HL)));
     assert_decode!(0b0011_1101, DEC(Reg8(A)));
   }
 
@@ -333,7 +333,7 @@ mod test {
     assert_decode!(0b0001_1110, LD(Reg8(E), Imm8));
     assert_decode!(0b0010_0110, LD(Reg8(H), Imm8));
     assert_decode!(0b0010_1110, LD(Reg8(L), Imm8));
-    assert_decode!(0b0011_0110, LD(PtrHL, Imm8));
+    assert_decode!(0b0011_0110, LD(PtrReg16(HL), Imm8));
     assert_decode!(0b0011_1110, LD(Reg8(A), Imm8));
   }
 
@@ -369,10 +369,10 @@ mod test {
 
   #[test]
   fn ldi_ldd() {
-    assert_decode!(0b0010_0010, LDI(PtrHL, Reg8(A)));
-    assert_decode!(0b0010_1010, LDI(Reg8(A), PtrHL));
-    assert_decode!(0b0011_0010, LDD(PtrHL, Reg8(A)));
-    assert_decode!(0b0011_1010, LDD(Reg8(A), PtrHL));
+    assert_decode!(0b0010_0010, LDI(PtrReg16(HL), Reg8(A)));
+    assert_decode!(0b0010_1010, LDI(Reg8(A), PtrReg16(HL)));
+    assert_decode!(0b0011_0010, LDD(PtrReg16(HL), Reg8(A)));
+    assert_decode!(0b0011_1010, LDD(Reg8(A), PtrReg16(HL)));
   }
 
   #[test]
@@ -403,7 +403,7 @@ mod test {
     assert_decode!(0b0101_1000, LD(Reg8(E), Reg8(B)));
     assert_decode!(0b0110_0000, LD(Reg8(H), Reg8(B)));
     assert_decode!(0b0110_1000, LD(Reg8(L), Reg8(B)));
-    assert_decode!(0b0111_0000, LD(PtrHL, Reg8(B)));
+    assert_decode!(0b0111_0000, LD(PtrReg16(HL), Reg8(B)));
     assert_decode!(0b0111_1000, LD(Reg8(A), Reg8(B)));
 
     assert_decode!(0b0100_0001, LD(Reg8(B), Reg8(C)));
@@ -412,7 +412,7 @@ mod test {
     assert_decode!(0b0101_1001, LD(Reg8(E), Reg8(C)));
     assert_decode!(0b0110_0001, LD(Reg8(H), Reg8(C)));
     assert_decode!(0b0110_1001, LD(Reg8(L), Reg8(C)));
-    assert_decode!(0b0111_0001, LD(PtrHL, Reg8(C)));
+    assert_decode!(0b0111_0001, LD(PtrReg16(HL), Reg8(C)));
     assert_decode!(0b0111_1001, LD(Reg8(A), Reg8(C)));
   }
 
@@ -429,7 +429,7 @@ mod test {
     assert_decode!(0b10_000_011, ALU(Add, Reg8(A), Reg8(E)));
     assert_decode!(0b10_000_100, ALU(Add, Reg8(A), Reg8(H)));
     assert_decode!(0b10_000_101, ALU(Add, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_000_110, ALU(Add, Reg8(A), PtrHL));
+    assert_decode!(0b10_000_110, ALU(Add, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_000_111, ALU(Add, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_001_000, ALU(Adc, Reg8(A), Reg8(B)));
@@ -438,7 +438,7 @@ mod test {
     assert_decode!(0b10_001_011, ALU(Adc, Reg8(A), Reg8(E)));
     assert_decode!(0b10_001_100, ALU(Adc, Reg8(A), Reg8(H)));
     assert_decode!(0b10_001_101, ALU(Adc, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_001_110, ALU(Adc, Reg8(A), PtrHL));
+    assert_decode!(0b10_001_110, ALU(Adc, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_001_111, ALU(Adc, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_010_000, ALU(Sub, Reg8(A), Reg8(B)));
@@ -447,7 +447,7 @@ mod test {
     assert_decode!(0b10_010_011, ALU(Sub, Reg8(A), Reg8(E)));
     assert_decode!(0b10_010_100, ALU(Sub, Reg8(A), Reg8(H)));
     assert_decode!(0b10_010_101, ALU(Sub, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_010_110, ALU(Sub, Reg8(A), PtrHL));
+    assert_decode!(0b10_010_110, ALU(Sub, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_010_111, ALU(Sub, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_011_000, ALU(Sbc, Reg8(A), Reg8(B)));
@@ -456,7 +456,7 @@ mod test {
     assert_decode!(0b10_011_011, ALU(Sbc, Reg8(A), Reg8(E)));
     assert_decode!(0b10_011_100, ALU(Sbc, Reg8(A), Reg8(H)));
     assert_decode!(0b10_011_101, ALU(Sbc, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_011_110, ALU(Sbc, Reg8(A), PtrHL));
+    assert_decode!(0b10_011_110, ALU(Sbc, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_011_111, ALU(Sbc, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_100_000, ALU(And, Reg8(A), Reg8(B)));
@@ -465,7 +465,7 @@ mod test {
     assert_decode!(0b10_100_011, ALU(And, Reg8(A), Reg8(E)));
     assert_decode!(0b10_100_100, ALU(And, Reg8(A), Reg8(H)));
     assert_decode!(0b10_100_101, ALU(And, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_100_110, ALU(And, Reg8(A), PtrHL));
+    assert_decode!(0b10_100_110, ALU(And, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_100_111, ALU(And, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_101_000, ALU(Xor, Reg8(A), Reg8(B)));
@@ -474,7 +474,7 @@ mod test {
     assert_decode!(0b10_101_011, ALU(Xor, Reg8(A), Reg8(E)));
     assert_decode!(0b10_101_100, ALU(Xor, Reg8(A), Reg8(H)));
     assert_decode!(0b10_101_101, ALU(Xor, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_101_110, ALU(Xor, Reg8(A), PtrHL));
+    assert_decode!(0b10_101_110, ALU(Xor, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_101_111, ALU(Xor, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_110_000, ALU(Or, Reg8(A), Reg8(B)));
@@ -483,7 +483,7 @@ mod test {
     assert_decode!(0b10_110_011, ALU(Or, Reg8(A), Reg8(E)));
     assert_decode!(0b10_110_100, ALU(Or, Reg8(A), Reg8(H)));
     assert_decode!(0b10_110_101, ALU(Or, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_110_110, ALU(Or, Reg8(A), PtrHL));
+    assert_decode!(0b10_110_110, ALU(Or, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_110_111, ALU(Or, Reg8(A), Reg8(A)));
 
     assert_decode!(0b10_111_000, ALU(Cp, Reg8(A), Reg8(B)));
@@ -492,7 +492,7 @@ mod test {
     assert_decode!(0b10_111_011, ALU(Cp, Reg8(A), Reg8(E)));
     assert_decode!(0b10_111_100, ALU(Cp, Reg8(A), Reg8(H)));
     assert_decode!(0b10_111_101, ALU(Cp, Reg8(A), Reg8(L)));
-    assert_decode!(0b10_111_110, ALU(Cp, Reg8(A), PtrHL));
+    assert_decode!(0b10_111_110, ALU(Cp, Reg8(A), PtrReg16(HL)));
     assert_decode!(0b10_111_111, ALU(Cp, Reg8(A), Reg8(A)));
   }
 
@@ -602,12 +602,12 @@ mod test {
 
   #[test]
   fn ld_c_a() {
-    assert_decode!(0b111_00010, LD(PtrC, Reg8(A)));
+    assert_decode!(0b111_00010, LD(PtrReg8(C), Reg8(A)));
   }
 
   #[test]
   fn ld_a_c() {
-    assert_decode!(0b111_10010, LD(Reg8(A), PtrC));
+    assert_decode!(0b111_10010, LD(Reg8(A), PtrReg8(C)));
   }
 
   #[test]
@@ -653,7 +653,7 @@ mod test {
     assert_decode_callback!(0b00000_011, RLC(Reg8(E)));
     assert_decode_callback!(0b00000_100, RLC(Reg8(H)));
     assert_decode_callback!(0b00000_101, RLC(Reg8(L)));
-    assert_decode_callback!(0b00000_110, RLC(PtrHL));
+    assert_decode_callback!(0b00000_110, RLC(PtrReg16(HL)));
     assert_decode_callback!(0b00000_111, RLC(Reg8(A)));
   }
 
@@ -665,7 +665,7 @@ mod test {
     assert_decode_callback!(0b00001_011, RRC(Reg8(E)));
     assert_decode_callback!(0b00001_100, RRC(Reg8(H)));
     assert_decode_callback!(0b00001_101, RRC(Reg8(L)));
-    assert_decode_callback!(0b00001_110, RRC(PtrHL));
+    assert_decode_callback!(0b00001_110, RRC(PtrReg16(HL)));
     assert_decode_callback!(0b00001_111, RRC(Reg8(A)));
   }
 
@@ -677,7 +677,7 @@ mod test {
     assert_decode_callback!(0b00010_011, RL(Reg8(E)));
     assert_decode_callback!(0b00010_100, RL(Reg8(H)));
     assert_decode_callback!(0b00010_101, RL(Reg8(L)));
-    assert_decode_callback!(0b00010_110, RL(PtrHL));
+    assert_decode_callback!(0b00010_110, RL(PtrReg16(HL)));
     assert_decode_callback!(0b00010_111, RL(Reg8(A)));
   }
 
@@ -689,7 +689,7 @@ mod test {
     assert_decode_callback!(0b00011_011, RR(Reg8(E)));
     assert_decode_callback!(0b00011_100, RR(Reg8(H)));
     assert_decode_callback!(0b00011_101, RR(Reg8(L)));
-    assert_decode_callback!(0b00011_110, RR(PtrHL));
+    assert_decode_callback!(0b00011_110, RR(PtrReg16(HL)));
     assert_decode_callback!(0b00011_111, RR(Reg8(A)));
   }
 
@@ -701,7 +701,7 @@ mod test {
     assert_decode_callback!(0b00100_011, SLA(Reg8(E)));
     assert_decode_callback!(0b00100_100, SLA(Reg8(H)));
     assert_decode_callback!(0b00100_101, SLA(Reg8(L)));
-    assert_decode_callback!(0b00100_110, SLA(PtrHL));
+    assert_decode_callback!(0b00100_110, SLA(PtrReg16(HL)));
     assert_decode_callback!(0b00100_111, SLA(Reg8(A)));
   }
 
@@ -713,7 +713,7 @@ mod test {
     assert_decode_callback!(0b00101_011, SRA(Reg8(E)));
     assert_decode_callback!(0b00101_100, SRA(Reg8(H)));
     assert_decode_callback!(0b00101_101, SRA(Reg8(L)));
-    assert_decode_callback!(0b00101_110, SRA(PtrHL));
+    assert_decode_callback!(0b00101_110, SRA(PtrReg16(HL)));
     assert_decode_callback!(0b00101_111, SRA(Reg8(A)));
   }
 
@@ -725,7 +725,7 @@ mod test {
     assert_decode_callback!(0b00110_011, SWAP(Reg8(E)));
     assert_decode_callback!(0b00110_100, SWAP(Reg8(H)));
     assert_decode_callback!(0b00110_101, SWAP(Reg8(L)));
-    assert_decode_callback!(0b00110_110, SWAP(PtrHL));
+    assert_decode_callback!(0b00110_110, SWAP(PtrReg16(HL)));
     assert_decode_callback!(0b00110_111, SWAP(Reg8(A)));
   }
 
@@ -737,7 +737,7 @@ mod test {
     assert_decode_callback!(0b01000_011, BIT(0, Reg8(E)));
     assert_decode_callback!(0b01000_100, BIT(0, Reg8(H)));
     assert_decode_callback!(0b01000_101, BIT(0, Reg8(L)));
-    assert_decode_callback!(0b01000_110, BIT(0, PtrHL));
+    assert_decode_callback!(0b01000_110, BIT(0, PtrReg16(HL)));
     assert_decode_callback!(0b01000_111, BIT(0, Reg8(A)));
 
     assert_decode_callback!(0b01001_000, BIT(1, Reg8(B)));
@@ -757,7 +757,7 @@ mod test {
     assert_decode_callback!(0b10000_011, RES(0, Reg8(E)));
     assert_decode_callback!(0b10000_100, RES(0, Reg8(H)));
     assert_decode_callback!(0b10000_101, RES(0, Reg8(L)));
-    assert_decode_callback!(0b10000_110, RES(0, PtrHL));
+    assert_decode_callback!(0b10000_110, RES(0, PtrReg16(HL)));
     assert_decode_callback!(0b10000_111, RES(0, Reg8(A)));
 
     assert_decode_callback!(0b10001_000, RES(1, Reg8(B)));
@@ -777,7 +777,7 @@ mod test {
     assert_decode_callback!(0b11000_011, SET(0, Reg8(E)));
     assert_decode_callback!(0b11000_100, SET(0, Reg8(H)));
     assert_decode_callback!(0b11000_101, SET(0, Reg8(L)));
-    assert_decode_callback!(0b11000_110, SET(0, PtrHL));
+    assert_decode_callback!(0b11000_110, SET(0, PtrReg16(HL)));
     assert_decode_callback!(0b11000_111, SET(0, Reg8(A)));
 
     assert_decode_callback!(0b11001_000, SET(1, Reg8(B)));

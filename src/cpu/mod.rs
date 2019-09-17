@@ -156,8 +156,15 @@ impl CPU {
 
     macro_rules! alu_cp_a {
       ($d:expr) => {{
-        // TODO
-        panic!("Not implemented yet");
+        let a = self.regs.a();
+        let v = a.wrapping_sub($d);
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(HF, (a & 0x0F) < ($d & 0x0F));
+        self.regs.set_flag(NF, true);
+        self.regs.set_flag(CF, (a as u16) < ($d as u16));
+
+        self.regs.pc() + 1
       }};
     }
 
@@ -227,8 +234,8 @@ impl CPU {
         pc + 1
       }
 
-      INC(PtrHL) => {
-        let ptr: usize = self.regs.hl() as usize;
+      INC(PtrReg16(reg16)) => {
+        let ptr: usize = self.regs.read16(reg16) as usize;
         let v = self.alu_inc(mmu.read8(ptr));
         mmu.write8(ptr, v);
         pc + 1
@@ -240,8 +247,8 @@ impl CPU {
         pc + 1
       }
 
-      DEC(PtrHL) => {
-        let ptr: usize = self.regs.hl() as usize;
+      DEC(PtrReg16(reg16)) => {
+        let ptr: usize = self.regs.read16(reg16) as usize;
         let v = self.alu_dec(mmu.read8(ptr));
         mmu.write8(ptr, v);
         pc + 1
@@ -252,8 +259,8 @@ impl CPU {
         pc + 2
       }
 
-      LD(PtrHL, Imm8) => {
-        let ptr: usize = self.regs.hl() as usize;
+      LD(PtrReg16(reg16), Imm8) => {
+        let ptr: usize = self.regs.read16(reg16) as usize;
         mmu.write8(ptr, self.read_arg8(mmu));
         pc + 2
       }
@@ -324,27 +331,31 @@ impl CPU {
         }
       }
 
-      LDI(PtrHL, Reg8(reg8)) => {
-        mmu.write8(self.regs.hl() as usize, self.regs.read8(reg8));
-        self.regs.set_hl(self.regs.hl().wrapping_add(1));
+      LDI(PtrReg16(reg16), Reg8(reg8)) => {
+        mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
+        self.regs.set_hl(self.regs.read16(reg16).wrapping_add(1));
         pc + 1
       }
 
-      LDI(Reg8(reg8), PtrHL) => {
-        self.regs.write8(reg8, mmu.read8(self.regs.hl() as usize));
-        self.regs.set_hl(self.regs.hl().wrapping_add(1));
+      LDI(Reg8(reg8), PtrReg16(reg16)) => {
+        self
+          .regs
+          .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
+        self.regs.set_hl(self.regs.read16(reg16).wrapping_add(1));
         pc + 1
       }
 
-      LDD(PtrHL, Reg8(reg8)) => {
-        mmu.write8(self.regs.hl() as usize, self.regs.read8(reg8));
-        self.regs.set_hl(self.regs.hl().wrapping_sub(1));
+      LDD(PtrReg16(reg16), Reg8(reg8)) => {
+        mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
+        self.regs.set_hl(self.regs.read16(reg16).wrapping_sub(1));
         pc + 1
       }
 
-      LDD(Reg8(reg8), PtrHL) => {
-        self.regs.write8(reg8, mmu.read8(self.regs.hl() as usize));
-        self.regs.set_hl(self.regs.hl().wrapping_sub(1));
+      LDD(Reg8(reg8), PtrReg16(reg16)) => {
+        self
+          .regs
+          .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
+        self.regs.set_hl(self.regs.read16(reg16).wrapping_sub(1));
         pc + 1
       }
 
@@ -379,15 +390,15 @@ impl CPU {
         pc + 1
       }
 
-      LD(Reg8(reg8_dest), PtrHL) => {
+      LD(Reg8(reg8_dest), PtrReg16(reg16)) => {
         self
           .regs
-          .write8(reg8_dest, mmu.read8(self.regs.hl() as usize));
+          .write8(reg8_dest, mmu.read8(self.regs.read16(reg16) as usize));
         pc + 1
       }
 
-      LD(PtrHL, Reg8(reg8_orig)) => {
-        mmu.write8(self.regs.hl() as usize, self.regs.read8(reg8_orig));
+      LD(PtrReg16(reg16), Reg8(reg8_orig)) => {
+        mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8_orig));
         pc + 1
       }
 
@@ -397,56 +408,56 @@ impl CPU {
       }
 
       ALU(Add, Reg8(A), Reg8(reg8)) => alu_add_a!(self.regs.read8(reg8)),
-      ALU(Add, Reg8(A), PtrHL) => alu_add_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Add, Reg8(A), PtrReg16(reg16)) => alu_add_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Add, Reg8(A), Imm8) => {
         alu_add_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(Adc, Reg8(A), Reg8(reg8)) => alu_adc_a!(self.regs.read8(reg8)),
-      ALU(Adc, Reg8(A), PtrHL) => alu_adc_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Adc, Reg8(A), PtrReg16(reg16)) => alu_adc_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Adc, Reg8(A), Imm8) => {
         alu_adc_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(Sub, Reg8(A), Reg8(reg8)) => alu_sub_a!(self.regs.read8(reg8)),
-      ALU(Sub, Reg8(A), PtrHL) => alu_sub_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Sub, Reg8(A), PtrReg16(reg16)) => alu_sub_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Sub, Reg8(A), Imm8) => {
         alu_sub_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(Sbc, Reg8(A), Reg8(reg8)) => alu_sbc_a!(self.regs.read8(reg8)),
-      ALU(Sbc, Reg8(A), PtrHL) => alu_sbc_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Sbc, Reg8(A), PtrReg16(reg16)) => alu_sbc_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Sbc, Reg8(A), Imm8) => {
         alu_sbc_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(And, Reg8(A), Reg8(reg8)) => alu_and_a!(self.regs.read8(reg8)),
-      ALU(And, Reg8(A), PtrHL) => alu_and_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(And, Reg8(A), PtrReg16(reg16)) => alu_and_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(And, Reg8(A), Imm8) => {
         alu_and_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(Xor, Reg8(A), Reg8(reg8)) => alu_xor_a!(self.regs.read8(reg8)),
-      ALU(Xor, Reg8(A), PtrHL) => alu_xor_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Xor, Reg8(A), PtrReg16(reg16)) => alu_xor_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Xor, Reg8(A), Imm8) => {
         alu_xor_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(Or, Reg8(A), Reg8(reg8)) => alu_or_a!(self.regs.read8(reg8)),
-      ALU(Or, Reg8(A), PtrHL) => alu_or_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Or, Reg8(A), PtrReg16(reg16)) => alu_or_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Or, Reg8(A), Imm8) => {
         alu_or_a!(self.read_arg8(mmu));
         2
       }
 
       ALU(Cp, Reg8(A), Reg8(reg8)) => alu_cp_a!(self.regs.read8(reg8)),
-      ALU(Cp, Reg8(A), PtrHL) => alu_cp_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Cp, Reg8(A), PtrReg16(reg16)) => alu_cp_a!(mmu.read8(self.regs.read16(reg16) as usize)),
       ALU(Cp, Reg8(A), Imm8) => {
         alu_cp_a!(self.read_arg8(mmu));
         2
@@ -603,15 +614,15 @@ impl CPU {
         pc + 2
       }
 
-      LD(PtrC, Reg8(reg8)) => {
-        let ptr = (0xFF00 | self.regs.c() as u16) as usize;
-        mmu.write8(ptr, self.regs.read8(reg8));
+      LD(PtrReg8(reg8_dest), Reg8(reg8_orig)) => {
+        let ptr = (0xFF00 | self.regs.read8(reg8_dest) as u16) as usize;
+        mmu.write8(ptr, self.regs.read8(reg8_orig));
         pc + 2
       }
 
-      LD(Reg8(reg8), PtrC) => {
-        let ptr = (0xFF00 | self.regs.c() as u16) as usize;
-        self.regs.write8(reg8, mmu.read8(ptr));
+      LD(Reg8(reg8_dest), PtrReg8(reg8_orig)) => {
+        let ptr = (0xFF00 | self.regs.read8(reg8_orig) as u16) as usize;
+        self.regs.write8(reg8_dest, mmu.read8(ptr));
         pc + 2
       }
 
@@ -664,8 +675,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      RLC(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      RLC(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rlc(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -675,8 +686,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      RRC(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      RRC(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rrc(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -686,8 +697,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      RL(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      RL(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rl(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -697,8 +708,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      RR(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      RR(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rr(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -708,8 +719,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      SLA(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      SLA(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_sla(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -719,8 +730,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      SRA(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      SRA(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_sra(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -730,8 +741,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      SWAP(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      SWAP(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_swap(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -741,8 +752,8 @@ impl CPU {
         self.regs.write8(reg8, v);
       }
 
-      SRL(PtrHL) => {
-        let ptr = self.regs.hl() as usize;
+      SRL(PtrReg16(reg16)) => {
+        let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_srl(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
@@ -753,16 +764,16 @@ impl CPU {
         self.alu_bit(n, v);
       }
 
-      BIT(n, PtrHL) => {
-        let v = mmu.read8(self.regs.hl() as usize);
+      BIT(n, PtrReg16(reg16)) => {
+        let v = mmu.read8(self.regs.read16(reg16) as usize);
 
         self.alu_bit(n, v);
       }
 
-      RES(n, PtrHL) => {
-        let v = mmu.read8(self.regs.hl() as usize);
+      RES(n, PtrReg16(reg16)) => {
+        let v = mmu.read8(self.regs.read16(reg16) as usize);
 
-        mmu.write8(self.regs.hl() as usize, v & !(1 << n));
+        mmu.write8(self.regs.read16(reg16) as usize, v & !(1 << n));
       }
 
       RES(n, Reg8(reg8)) => {
@@ -771,10 +782,10 @@ impl CPU {
         self.regs.write8(reg8, v & !(1 << n));
       }
 
-      SET(n, PtrHL) => {
-        let v = mmu.read8(self.regs.hl() as usize);
+      SET(n, PtrReg16(reg16)) => {
+        let v = mmu.read8(self.regs.read16(reg16) as usize);
 
-        mmu.write8(self.regs.hl() as usize, v | (1 << n));
+        mmu.write8(self.regs.read16(reg16) as usize, v | (1 << n));
       }
 
       SET(n, Reg8(reg8)) => {
@@ -2656,6 +2667,63 @@ mod tests {
     cpu.regs.set_b(0xB0);
     exec!(cpu, mmu, 0b1011_0000);
     assert_eq!(cpu.regs.get_flag(CF), false);
+  }
+
+  #[test]
+  fn opcode_cp() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+
+    // CP A, B
+    cpu.regs.set_a(5);
+    cpu.regs.set_b(2);
+    exec!(cpu, mmu, 0b1011_1000);
+    assert_eq!(cpu.regs.a(), 5);
+
+    // CP A, (HL)
+    cpu.regs.set_a(5);
+    cpu.regs.set_hl(1024);
+    mmu._load8(1024, 2);
+    exec!(cpu, mmu, 0b1011_1110);
+    assert_eq!(cpu.regs.a(), 5);
+
+    // CP A, A
+    cpu.regs.set_a(5);
+    exec!(cpu, mmu, 0b1011_1111);
+    assert_eq!(cpu.regs.a(), 5);
+
+    // CP A, N
+    cpu.regs.set_a(5);
+    exec!(cpu, mmu, 0b1111_1110, arg8 => 2);
+    assert_eq!(cpu.regs.a(), 5);
+  }
+
+  #[test]
+  fn opcode_cp_flags() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+
+    // ZF flag set if result is zero
+    cpu.regs.set_a(0);
+    cpu.regs.set_b(0);
+    exec!(cpu, mmu, 0b1011_1000);
+    assert_eq!(cpu.regs.get_flag(ZF), true);
+
+    // HF flag set if borrow from bit 4
+    cpu.regs.set_a(0x10);
+    cpu.regs.set_b(0x01);
+    exec!(cpu, mmu, 0b1011_1000);
+    assert_eq!(cpu.regs.get_flag(HF), true);
+
+    // NF flag set
+    cpu.regs.set_a(7);
+    cpu.regs.set_b(7);
+    exec!(cpu, mmu, 0b1011_1000);
+    assert_eq!(cpu.regs.get_flag(NF), true);
+
+    // CF flag set if r8 > A
+    cpu.regs.set_a(0xA0);
+    cpu.regs.set_b(0xB0);
+    exec!(cpu, mmu, 0b1011_1000);
+    assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
