@@ -2,7 +2,7 @@ pub mod opcodes;
 pub mod registers;
 
 use super::mmu::MMU;
-use opcodes::{ExtendedOpcode, Opcode};
+use opcodes::{AluOp, ExtendedOpcode, Opcode};
 use registers::{Flag, Register16, Register8, Registers};
 
 use Flag::*;
@@ -30,311 +30,170 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    let new_pc = self.exec_opcode(opcode, current_pc, mmu);
+    let new_pc = match self.exec_opcode(opcode, current_pc, mmu) {
+      Some(new_pc) => new_pc,
+      None => opcodes::op_size(opcode),
+    };
 
     self.regs.set_pc(new_pc);
   }
 
   // executes the given opcode
   #[allow(unused_macros)]
-  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut MMU) -> u16 {
-    macro_rules! alu_add_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let v = a.wrapping_add($d);
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(HF, (a & 0x0F) + ($d & 0x0F) > 0x0F);
-        self.regs.set_flag(NF, false);
-        self.regs.set_flag(CF, (a as u16) + ($d as u16) > 0xFF);
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_adc_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let c = if self.regs.get_flag(CF) { 1 } else { 0 };
-        let v = a.wrapping_add($d).wrapping_add(c);
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(HF, (a & 0x0F) + ($d & 0x0F) + c > 0x0F);
-        self.regs.set_flag(NF, false);
-        self
-          .regs
-          .set_flag(CF, (a as u16) + ($d as u16) + (c as u16) > 0xFF);
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_sub_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let v = a.wrapping_sub($d);
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(HF, (a & 0x0F) < ($d & 0x0F));
-        self.regs.set_flag(NF, true);
-        self.regs.set_flag(CF, (a as u16) < ($d as u16));
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_sbc_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let c = if self.regs.get_flag(CF) { 1 } else { 0 };
-        let v = a.wrapping_sub($d).wrapping_sub(c);
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(HF, (a & 0x0F) < ($d & 0x0F) + c);
-        self.regs.set_flag(NF, true);
-        self.regs.set_flag(CF, (a as u16) < ($d as u16));
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_and_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let v = a & $d;
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(CF, false);
-        self.regs.set_flag(HF, true);
-        self.regs.set_flag(NF, false);
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_xor_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let v = a ^ $d;
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(CF, false);
-        self.regs.set_flag(HF, false);
-        self.regs.set_flag(NF, false);
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_or_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let v = a | $d;
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(CF, false);
-        self.regs.set_flag(HF, false);
-        self.regs.set_flag(NF, false);
-
-        self.regs.set_a(v);
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_cp_a {
-      ($d:expr) => {{
-        let a = self.regs.a();
-        let v = a.wrapping_sub($d);
-
-        self.regs.set_flag(ZF, v == 0);
-        self.regs.set_flag(HF, (a & 0x0F) < ($d & 0x0F));
-        self.regs.set_flag(NF, true);
-        self.regs.set_flag(CF, (a as u16) < ($d as u16));
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    macro_rules! alu_add_hl {
-      ($d:expr) => {{
-        let hl = self.regs.hl();
-
-        let v = hl.wrapping_add($d);
-
-        self.regs.set_hl(v);
-
-        self.regs.set_flag(NF, false);
-        self.regs.set_flag(HF, self.overflow16(hl, $d, 11));
-        self.regs.set_flag(CF, self.overflow16(hl, $d, 15));
-
-        self.regs.pc() + 1
-      }};
-    }
-
-    use opcodes::{AluOp::*, Arg::*, JumpCondition::*, Opcode::*};
+  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut MMU) -> Option<u16> {
+    use opcodes::{Arg::*, JumpCondition::*, Opcode::*};
 
     match opcode {
-      // NOP, do nothing
-      NOP => pc + 1,
+      NOP => None,
 
       LD(Addr16, Reg16(reg16)) => {
         mmu.write16(self.read_arg16(mmu) as usize, self.regs.read16(reg16));
-        pc + 3
+        None
       }
 
       LD(Reg16(reg16), Imm16) => {
         self.regs.write16(reg16, self.read_arg16(mmu));
-        pc + 3
+        None
       }
 
-      ADD(Reg16(HL), Reg16(reg16)) => alu_add_hl!(self.regs.read16(reg16)),
+      ADD(Reg16(HL), Reg16(reg16)) => {
+        self.alu_add_hl(self.regs.read16(reg16));
+        None
+      }
 
       LD(Reg16(reg16), Reg8(reg8)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
-        pc + 1
+        None
       }
 
       LD(Reg8(reg8), Reg16(reg16)) => {
         self
           .regs
           .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
-        pc + 1
+        None
       }
 
       INC(Reg16(reg16)) => {
         self
           .regs
           .write16(reg16, self.regs.read16(reg16).wrapping_add(1));
-        pc + 1
+        None
       }
 
       DEC(Reg16(reg16)) => {
         self
           .regs
           .write16(reg16, self.regs.read16(reg16).wrapping_sub(1));
-        pc + 1
+        None
       }
 
       INC(Reg8(reg8)) => {
         let v = self.alu_inc(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
-        pc + 1
+        None
       }
 
       INC(PtrReg16(reg16)) => {
         let ptr: usize = self.regs.read16(reg16) as usize;
         let v = self.alu_inc(mmu.read8(ptr));
         mmu.write8(ptr, v);
-        pc + 1
+        None
       }
 
       DEC(Reg8(reg8)) => {
         let v = self.alu_dec(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
-        pc + 1
+        None
       }
 
       DEC(PtrReg16(reg16)) => {
         let ptr: usize = self.regs.read16(reg16) as usize;
         let v = self.alu_dec(mmu.read8(ptr));
         mmu.write8(ptr, v);
-        pc + 1
+        None
       }
 
       LD(Reg8(reg8), Imm8) => {
         self.regs.write8(reg8, self.read_arg8(mmu));
-        pc + 2
+        None
       }
 
       LD(PtrReg16(reg16), Imm8) => {
         let ptr: usize = self.regs.read16(reg16) as usize;
         mmu.write8(ptr, self.read_arg8(mmu));
-        pc + 2
+        None
       }
 
       // RdCA
       RLCA => {
         let v = self.alu_rlc(self.regs.a());
         self.regs.set_a(v);
-        pc + 1
+        None
       }
 
       RRCA => {
         let v = self.alu_rrc(self.regs.a());
         self.regs.set_a(v);
-        pc + 1
+        None
       }
 
       RLA => {
         let v = self.alu_rl(self.regs.a());
         self.regs.set_a(v);
-        pc + 1
+        None
       }
 
       RRA => {
         let v = self.alu_rr(self.regs.a());
         self.regs.set_a(v);
-        pc + 1
+        None
       }
 
       STOP => {
         // TODO
-        1
+        None
       }
 
-      JUMP(Always, Imm8) => pc + self.read_arg8(mmu) as u16,
+      JUMP(Always, Imm8) => Some(pc + self.read_arg8(mmu) as u16),
 
       JUMP(NotZero, Imm8) => {
         println!("flag value: {}", self.regs.get_flag(ZF));
         if !self.regs.get_flag(ZF) {
           println!("jumping");
-          pc + self.read_arg8(mmu) as u16
+          Some(pc + self.read_arg8(mmu) as u16)
         } else {
-          pc + 2
+          None
         }
       }
 
       JUMP(Zero, Imm8) => {
         if self.regs.get_flag(ZF) {
-          pc + self.read_arg8(mmu) as u16
+          Some(pc + self.read_arg8(mmu) as u16)
         } else {
-          pc + 2
+          None
         }
       }
 
       JUMP(NotCarry, Imm8) => {
         if !self.regs.get_flag(CF) {
-          pc + self.read_arg8(mmu) as u16
+          Some(pc + self.read_arg8(mmu) as u16)
         } else {
-          pc + 2
+          None
         }
       }
 
       JUMP(Carry, Imm8) => {
         if self.regs.get_flag(CF) {
-          pc + self.read_arg8(mmu) as u16
+          Some(pc + self.read_arg8(mmu) as u16)
         } else {
-          pc + 2
+          None
         }
       }
 
       LDI(PtrReg16(reg16), Reg8(reg8)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_add(1));
-        pc + 1
+        None
       }
 
       LDI(Reg8(reg8), PtrReg16(reg16)) => {
@@ -342,13 +201,13 @@ impl CPU {
           .regs
           .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_add(1));
-        pc + 1
+        None
       }
 
       LDD(PtrReg16(reg16), Reg8(reg8)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_sub(1));
-        pc + 1
+        None
       }
 
       LDD(Reg8(reg8), PtrReg16(reg16)) => {
@@ -356,317 +215,274 @@ impl CPU {
           .regs
           .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_sub(1));
-        pc + 1
+        None
       }
 
       DAA => {
         self.alu_daa();
-        pc + 1
+        None
       }
 
       CPL => {
         self.regs.set_a(!self.regs.a());
         self.regs.set_flag(NF, true);
         self.regs.set_flag(HF, true);
-        pc + 1
+        None
       }
 
       SCF => {
         self.regs.set_flag(CF, true);
         self.regs.set_flag(NF, false);
         self.regs.set_flag(HF, false);
-        pc + 1
+        None
       }
 
       CCF => {
         self.regs.set_flag(CF, !self.regs.get_flag(CF));
         self.regs.set_flag(NF, false);
         self.regs.set_flag(HF, false);
-        pc + 1
+        None
       }
 
       LD(Reg8(reg8_dest), Reg8(reg8_orig)) => {
         self.regs.write8(reg8_dest, self.regs.read8(reg8_orig));
-        pc + 1
+        None
       }
 
       LD(Reg8(reg8_dest), PtrReg16(reg16)) => {
         self
           .regs
           .write8(reg8_dest, mmu.read8(self.regs.read16(reg16) as usize));
-        pc + 1
+        None
       }
 
       LD(PtrReg16(reg16), Reg8(reg8_orig)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8_orig));
-        pc + 1
+        None
       }
 
       HALT => {
         // TODO
-        pc + 1
+        None
       }
 
-      ALU(Add, Reg8(A), Reg8(reg8)) => alu_add_a!(self.regs.read8(reg8)),
-      ALU(Add, Reg8(A), PtrReg16(reg16)) => alu_add_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Add, Reg8(A), Imm8) => {
-        alu_add_a!(self.read_arg8(mmu));
-        2
-      }
+      ALU(op, Reg8(A), from) => {
+        let d = match from {
+          Reg8(r) => self.regs.read8(r),
+          PtrReg16(r) => mmu.read8(self.regs.read16(r) as usize),
+          Imm8 => self.read_arg8(mmu),
+          _ => unreachable!(),
+        };
 
-      ALU(Adc, Reg8(A), Reg8(reg8)) => alu_adc_a!(self.regs.read8(reg8)),
-      ALU(Adc, Reg8(A), PtrReg16(reg16)) => alu_adc_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Adc, Reg8(A), Imm8) => {
-        alu_adc_a!(self.read_arg8(mmu));
-        2
-      }
+        self.alu_op(op, d);
 
-      ALU(Sub, Reg8(A), Reg8(reg8)) => alu_sub_a!(self.regs.read8(reg8)),
-      ALU(Sub, Reg8(A), PtrReg16(reg16)) => alu_sub_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Sub, Reg8(A), Imm8) => {
-        alu_sub_a!(self.read_arg8(mmu));
-        2
-      }
-
-      ALU(Sbc, Reg8(A), Reg8(reg8)) => alu_sbc_a!(self.regs.read8(reg8)),
-      ALU(Sbc, Reg8(A), PtrReg16(reg16)) => alu_sbc_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Sbc, Reg8(A), Imm8) => {
-        alu_sbc_a!(self.read_arg8(mmu));
-        2
-      }
-
-      ALU(And, Reg8(A), Reg8(reg8)) => alu_and_a!(self.regs.read8(reg8)),
-      ALU(And, Reg8(A), PtrReg16(reg16)) => alu_and_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(And, Reg8(A), Imm8) => {
-        alu_and_a!(self.read_arg8(mmu));
-        2
-      }
-
-      ALU(Xor, Reg8(A), Reg8(reg8)) => alu_xor_a!(self.regs.read8(reg8)),
-      ALU(Xor, Reg8(A), PtrReg16(reg16)) => alu_xor_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Xor, Reg8(A), Imm8) => {
-        alu_xor_a!(self.read_arg8(mmu));
-        2
-      }
-
-      ALU(Or, Reg8(A), Reg8(reg8)) => alu_or_a!(self.regs.read8(reg8)),
-      ALU(Or, Reg8(A), PtrReg16(reg16)) => alu_or_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Or, Reg8(A), Imm8) => {
-        alu_or_a!(self.read_arg8(mmu));
-        2
-      }
-
-      ALU(Cp, Reg8(A), Reg8(reg8)) => alu_cp_a!(self.regs.read8(reg8)),
-      ALU(Cp, Reg8(A), PtrReg16(reg16)) => alu_cp_a!(mmu.read8(self.regs.read16(reg16) as usize)),
-      ALU(Cp, Reg8(A), Imm8) => {
-        alu_cp_a!(self.read_arg8(mmu));
-        2
+        None
       }
 
       POP(reg16) => {
         let v = self.pop(mmu);
         self.regs.write16(reg16, v);
-        pc + 1
+        None
       }
 
       PUSH(reg16) => {
         self.push(self.regs.read16(reg16), mmu);
-        pc + 1
+        None
       }
 
       RST(_) => panic!("Not Implemented yet"),
 
       RET(NotZero) => {
         if !self.regs.get_flag(ZF) {
-          self.pop(mmu)
+          Some(self.pop(mmu))
         } else {
-          pc + 1
+          None
         }
       }
 
       RET(Zero) => {
         if self.regs.get_flag(ZF) {
-          self.pop(mmu)
+          Some(self.pop(mmu))
         } else {
-          pc + 1
+          None
         }
       }
 
       RET(NotCarry) => {
         if !self.regs.get_flag(CF) {
-          self.pop(mmu)
+          Some(self.pop(mmu))
         } else {
-          pc + 1
+          None
         }
       }
 
       RET(Carry) => {
         if self.regs.get_flag(CF) {
-          self.pop(mmu)
+          Some(self.pop(mmu))
         } else {
-          pc + 1
+          None
         }
       }
 
-      RET(Always) => self.pop(mmu),
+      RET(Always) => Some(self.pop(mmu)),
 
       RETI => {
         self.interrupts = 1;
-        self.pop(mmu)
+        Some(self.pop(mmu))
       }
 
       JUMP(NotZero, Addr16) => {
         if !self.regs.get_flag(ZF) {
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       JUMP(Zero, Addr16) => {
         if self.regs.get_flag(ZF) {
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       JUMP(NotCarry, Addr16) => {
         if !self.regs.get_flag(CF) {
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       JUMP(Carry, Addr16) => {
         if self.regs.get_flag(CF) {
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
-      JUMP(Always, Addr16) => self.read_arg16(mmu),
+      JUMP(Always, Addr16) => Some(self.read_arg16(mmu)),
 
       CALL(NotZero, Addr16) => {
         if !self.regs.get_flag(ZF) {
           self.push(pc + 3, mmu);
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       CALL(Zero, Addr16) => {
         if self.regs.get_flag(ZF) {
           self.push(pc + 3, mmu);
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       CALL(NotCarry, Addr16) => {
         if !self.regs.get_flag(CF) {
           self.push(pc + 3, mmu);
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       CALL(Carry, Addr16) => {
         if self.regs.get_flag(CF) {
           self.push(pc + 3, mmu);
-          self.read_arg16(mmu)
+          Some(self.read_arg16(mmu))
         } else {
-          pc + 3
+          None
         }
       }
 
       CALL(Always, Addr16) => {
         self.push(pc + 3, mmu);
-        self.read_arg16(mmu)
+        Some(self.read_arg16(mmu))
       }
 
       ADD(Reg16(reg16), Imm8) => {
         let v = self.alu_add16imm(self.regs.read16(reg16), mmu);
         self.regs.write16(reg16, v);
-        pc + 2
+        None
       }
 
       LD(Reg16(reg16), SPPlusImm8) => {
         let v = self.alu_add16imm(self.regs.sp(), mmu);
         self.regs.write16(reg16, v);
-        pc + 2
+        None
       }
 
-      LD(FF00PlusImm8, Reg8(reg8)) => {
+      LD(HighMemImm8, Reg8(reg8)) => {
         let ptr = (0xFF00 | self.read_arg8(mmu) as u16) as usize;
         mmu.write8(ptr, self.regs.read8(reg8));
-        pc + 2
+        None
       }
 
-      LD(Reg8(reg8), FF00PlusImm8) => {
+      LD(Reg8(reg8), HighMemImm8) => {
         let ptr = (0xFF00 | self.read_arg8(mmu) as u16) as usize;
         self.regs.write8(reg8, mmu.read8(ptr));
-        pc + 2
+        None
       }
 
-      LD(PtrReg8(reg8_dest), Reg8(reg8_orig)) => {
+      LD(HighMemReg8(reg8_dest), Reg8(reg8_orig)) => {
         let ptr = (0xFF00 | self.regs.read8(reg8_dest) as u16) as usize;
         mmu.write8(ptr, self.regs.read8(reg8_orig));
-        pc + 2
+        None
       }
 
-      LD(Reg8(reg8_dest), PtrReg8(reg8_orig)) => {
+      LD(Reg8(reg8_dest), HighMemReg8(reg8_orig)) => {
         let ptr = (0xFF00 | self.regs.read8(reg8_orig) as u16) as usize;
         self.regs.write8(reg8_dest, mmu.read8(ptr));
-        pc + 2
+        None
       }
 
       LD(Addr16, Reg8(reg8)) => {
         let ptr = self.read_arg16(mmu) as usize;
         mmu.write8(ptr, self.regs.read8(reg8));
-        pc + 2
+        None
       }
 
       LD(Reg8(reg8), Addr16) => {
         let ptr = self.read_arg16(mmu) as usize;
         self.regs.write8(reg8, mmu.read8(ptr));
-        pc + 2
+        None
       }
 
-      JUMP(Always, Reg16(reg16)) => self.regs.read16(reg16),
+      JUMP(Always, Reg16(reg16)) => Some(self.regs.read16(reg16)),
 
       LD(Reg16(reg16_dest), Reg16(reg16_orig)) => {
         self.regs.write16(reg16_dest, self.regs.read16(reg16_orig));
-        pc + 1
+        None
       }
 
       DI => {
         self.interrupts = 0;
-        pc + 1
+        None
       }
 
       EI => {
         self.interrupts = 1;
-        pc + 1
+        None
       }
 
       CALLBACK => {
         let extended_opcode = opcodes::decode_extended(self.read_arg8(mmu));
-        self.exec_cb(extended_opcode, pc, mmu);
+        self.exec_cb(extended_opcode, mmu);
 
-        pc + 1
+        None
       }
 
       _ => unreachable!("Unexpected opcode: {:?}", opcode),
     }
   }
 
-  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, pc: u16, mmu: &mut MMU) -> u16 {
+  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) {
     use opcodes::{Arg::*, ExtendedOpcode::*};
 
     match decoded_opcode {
@@ -796,8 +612,114 @@ impl CPU {
 
       opcode => unreachable!("Unknown extended opcode #{:?}", opcode),
     };
+  }
 
-    pc + 2
+  fn alu_add_hl(&mut self, d: u16) {
+    let hl = self.regs.hl();
+
+    let v = hl.wrapping_add(d);
+
+    self.regs.set_hl(v);
+
+    self.regs.set_flag(NF, false);
+    self.regs.set_flag(HF, self.overflow16(hl, d, 11));
+    self.regs.set_flag(CF, self.overflow16(hl, d, 15));
+  }
+
+  fn alu_op(&mut self, op: AluOp, d: u8) {
+    match op {
+      AluOp::Add => {
+        let a = self.regs.a();
+        let v = a.wrapping_add(d);
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(HF, (a & 0x0F) + (d & 0x0F) > 0x0F);
+        self.regs.set_flag(NF, false);
+        self.regs.set_flag(CF, (a as u16) + (d as u16) > 0xFF);
+
+        self.regs.set_a(v);
+      }
+      AluOp::Adc => {
+        let a = self.regs.a();
+        let c = if self.regs.get_flag(CF) { 1 } else { 0 };
+        let v = a.wrapping_add(d).wrapping_add(c);
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(HF, (a & 0x0F) + (d & 0x0F) + c > 0x0F);
+        self.regs.set_flag(NF, false);
+        self
+          .regs
+          .set_flag(CF, (a as u16) + (d as u16) + (c as u16) > 0xFF);
+
+        self.regs.set_a(v);
+      }
+      AluOp::Sub => {
+        let a = self.regs.a();
+        let v = a.wrapping_sub(d);
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(HF, (a & 0x0F) < (d & 0x0F));
+        self.regs.set_flag(NF, true);
+        self.regs.set_flag(CF, (a as u16) < (d as u16));
+
+        self.regs.set_a(v);
+      }
+      AluOp::Sbc => {
+        let a = self.regs.a();
+        let c = if self.regs.get_flag(CF) { 1 } else { 0 };
+        let v = a.wrapping_sub(d).wrapping_sub(c);
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(HF, (a & 0x0F) < (d & 0x0F) + c);
+        self.regs.set_flag(NF, true);
+        self.regs.set_flag(CF, (a as u16) < (d as u16));
+
+        self.regs.set_a(v);
+      }
+      AluOp::And => {
+        let a = self.regs.a();
+        let v = a & d;
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(CF, false);
+        self.regs.set_flag(HF, true);
+        self.regs.set_flag(NF, false);
+
+        self.regs.set_a(v);
+      }
+      AluOp::Xor => {
+        let a = self.regs.a();
+        let v = a ^ d;
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(CF, false);
+        self.regs.set_flag(HF, false);
+        self.regs.set_flag(NF, false);
+
+        self.regs.set_a(v);
+      }
+      AluOp::Or => {
+        let a = self.regs.a();
+        let v = a | d;
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(CF, false);
+        self.regs.set_flag(HF, false);
+        self.regs.set_flag(NF, false);
+
+        self.regs.set_a(v);
+      }
+
+      AluOp::Cp => {
+        let a = self.regs.a();
+        let v = a.wrapping_sub(d);
+
+        self.regs.set_flag(ZF, v == 0);
+        self.regs.set_flag(HF, (a & 0x0F) < (d & 0x0F));
+        self.regs.set_flag(NF, true);
+        self.regs.set_flag(CF, (a as u16) < (d as u16));
+      }
+    }
   }
 
   fn alu_inc(&mut self, initial: u8) -> u8 {
@@ -1037,9 +959,7 @@ mod tests {
 
   macro_rules! exec_cb {
     ($cpu:expr, $mmu:expr, $opcode:expr) => {{
-      let pc = $cpu.regs.pc();
-      $mmu._load8(pc as usize, 0x0);
-      $cpu.exec_cb($opcode, pc, &mut $mmu)
+      $cpu.exec_cb($opcode, &mut $mmu)
     }};
   }
 
@@ -1437,7 +1357,7 @@ mod tests {
 
     let new_pc = exec!(cpu, mmu, JUMP(Always, Imm8), arg8 => 0b0000_0011);
 
-    assert_eq!(new_pc, 3);
+    assert_eq!(new_pc, Some(3));
   }
 
   #[test]
@@ -1448,13 +1368,13 @@ mod tests {
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
     let new_pc = exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
-    assert_eq!(new_pc, 8);
+    assert_eq!(new_pc, Some(8));
 
     // JR NZ, N increments by 2 if not NZ
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
     let new_pc = exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
-    assert_eq!(new_pc, 2);
+    assert_eq!(new_pc, None);
   }
 
   #[test]
@@ -2029,7 +1949,7 @@ mod tests {
     cpu.push(666, &mut mmu);
     let new_pc = exec!(cpu, mmu, RET(NotZero));
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(new_pc, 666);
+    assert_eq!(new_pc, Some(666));
 
     // RET NZ if Z flag is set
     cpu.regs.set_pc(0);
@@ -2037,7 +1957,7 @@ mod tests {
     cpu.regs.set_flag(ZF, true);
     cpu.push(666, &mut mmu);
     let new_pc = exec!(cpu, mmu, RET(NotZero));
-    assert_eq!(new_pc, 1);
+    assert_eq!(new_pc, None);
     assert_eq!(cpu.regs.sp(), 0xff8e);
   }
 
@@ -2051,7 +1971,7 @@ mod tests {
     let new_pc = exec!(cpu, mmu, RET(Always));
 
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(new_pc, 666);
+    assert_eq!(new_pc, Some(666));
   }
 
   #[test]
@@ -2062,7 +1982,7 @@ mod tests {
     cpu.push(666, &mut mmu);
     let new_pc = exec!(cpu, mmu, RETI);
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(new_pc, 666);
+    assert_eq!(new_pc, Some(666));
     assert_eq!(cpu.interrupts, 1);
   }
 
@@ -2074,13 +1994,13 @@ mod tests {
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
     let new_pc = exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
-    assert_eq!(new_pc, 123);
+    assert_eq!(new_pc, Some(123));
 
     // JP NZ, N when ZF is set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
     let new_pc = exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
-    assert_eq!(new_pc, 3);
+    assert_eq!(new_pc, None);
   }
 
   #[test]
@@ -2089,7 +2009,7 @@ mod tests {
 
     let new_pc = exec!(cpu, mmu, JUMP(Always, Imm8), arg16 => 123);
 
-    assert_eq!(new_pc, 123);
+    assert_eq!(new_pc, Some(123));
   }
 
   #[test]
@@ -2103,7 +2023,7 @@ mod tests {
     let new_pc = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(new_pc, 123);
+    assert_eq!(new_pc, Some(123));
 
     // CALL NZ, N when ZF is set
     cpu.regs.set_pc(0);
@@ -2111,7 +2031,7 @@ mod tests {
     cpu.regs.set_sp(0xff90);
     let new_pc = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(new_pc, 3);
+    assert_eq!(new_pc, None);
   }
 
   #[test]
@@ -2123,7 +2043,7 @@ mod tests {
 
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(new_pc, 123);
+    assert_eq!(new_pc, Some(123));
   }
 
   #[test]
@@ -2151,7 +2071,7 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_a(1);
 
-    exec!(cpu, mmu, LD(FF00PlusImm8, Reg8(A)), arg8 => 0x80);
+    exec!(cpu, mmu, LD(HighMemImm8, Reg8(A)), arg8 => 0x80);
 
     assert_eq!(mmu.read8(0xFF80), 1);
   }
@@ -2161,7 +2081,7 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     mmu.write8(0xFF80, 1);
 
-    exec!(cpu, mmu, LD(Reg8(A), FF00PlusImm8), arg8 => 0x80);
+    exec!(cpu, mmu, LD(Reg8(A), HighMemImm8), arg8 => 0x80);
 
     assert_eq!(cpu.regs.a(), 1);
   }
@@ -2172,7 +2092,7 @@ mod tests {
     cpu.regs.set_a(1);
     cpu.regs.set_c(0x80);
 
-    exec!(cpu, mmu, LD(PtrReg8(C), Reg8(A)));
+    exec!(cpu, mmu, LD(HighMemReg8(C), Reg8(A)));
 
     assert_eq!(mmu.read8(0xFF80), 1);
   }
@@ -2183,7 +2103,7 @@ mod tests {
     cpu.regs.set_c(0x80);
     mmu.write8(0xFF80, 1);
 
-    exec!(cpu, mmu, LD(Reg8(A), PtrReg8(C)));
+    exec!(cpu, mmu, LD(Reg8(A), HighMemReg8(C)));
 
     assert_eq!(cpu.regs.a(), 1);
   }
@@ -2215,7 +2135,7 @@ mod tests {
 
     let new_pc = exec!(cpu, mmu, JUMP(Always, Reg16(HL)));
 
-    assert_eq!(new_pc, 123);
+    assert_eq!(new_pc, Some(123));
   }
 
   #[test]

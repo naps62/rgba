@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Opcode {
   NOP,
   LD(Arg, Arg),
@@ -30,7 +30,7 @@ pub enum Opcode {
   CALLBACK,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ExtendedOpcode {
   RLC(Arg),
   RRC(Arg),
@@ -53,20 +53,20 @@ use ExtendedOpcode::*;
 use JumpCondition::*;
 use Opcode::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Arg {
   Addr16,
   Imm8,
   Imm16,
-  PtrReg8(registers::Register8),
   PtrReg16(registers::Register16),
   Reg8(registers::Register8),
   Reg16(registers::Register16),
   SPPlusImm8,
-  FF00PlusImm8,
+  HighMemImm8,
+  HighMemReg8(registers::Register8),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum JumpCondition {
   Always,
   NotZero,
@@ -75,7 +75,7 @@ pub enum JumpCondition {
   Carry,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum AluOp {
   Add,
   Adc,
@@ -137,10 +137,10 @@ pub fn decode(byte: u8) -> Opcode {
     0b110_01101 => CALL(Always, Addr16),
     0b1110_1000 => ADD(Reg16(SP), Imm8),
     0b1111_1000 => LD(Reg16(HL), SPPlusImm8),
-    0b1110_0000 => LD(FF00PlusImm8, Reg8(A)),
-    0b1111_0000 => LD(Reg8(A), FF00PlusImm8),
-    0b1110_0010 => LD(PtrReg8(C), Reg8(A)),
-    0b1111_0010 => LD(Reg8(A), PtrReg8(C)),
+    0b1110_0000 => LD(HighMemImm8, Reg8(A)),
+    0b1111_0000 => LD(Reg8(A), HighMemImm8),
+    0b1110_0010 => LD(HighMemReg8(C), Reg8(A)),
+    0b1111_0010 => LD(Reg8(A), HighMemReg8(C)),
     0b1110_1010 => LD(Addr16, Reg8(A)),
     0b1111_1010 => LD(Reg8(A), Addr16),
     0b1110_1001 => JUMP(Always, Reg16(HL)),
@@ -166,6 +166,24 @@ pub fn decode_extended(byte: u8) -> ExtendedOpcode {
     _ if op_match(byte, 0b11000000, 0b10000000) => RES(n(byte, 2), destination(byte, 5)),
     _ if op_match(byte, 0b11000000, 0b11000000) => SET(n(byte, 2), destination(byte, 5)),
     _ => unreachable!("Invalid callback opcode {:#02b}", byte),
+  }
+}
+
+pub fn op_size(opcode: Opcode) -> u16 {
+  match opcode {
+    LD(Addr16, _) => 3,
+    LD(_, Imm16) => 3,
+    LD(_, Imm8) => 3,
+    JUMP(_, Imm8) => 2,
+    ALU(_, _, Imm8) => 2,
+    JUMP(_, Addr16) => 3,
+    ADD(_, Imm8) => 2,
+    LD(_, SPPlusImm8) => 2,
+    LD(HighMemImm8, _) => 2,
+    LD(_, HighMemImm8) => 2,
+    LD(_, Addr16) => 3,
+    CALLBACK => 2,
+    _ => 1,
   }
 }
 
@@ -592,22 +610,22 @@ mod test {
 
   #[test]
   fn ld_high_mem_a() {
-    assert_decode!(0b111_00000, LD(FF00PlusImm8, Reg8(A)));
+    assert_decode!(0b111_00000, LD(HighMemImm8, Reg8(A)));
   }
 
   #[test]
   fn ld_a_high_mem() {
-    assert_decode!(0b111_10000, LD(Reg8(A), FF00PlusImm8));
+    assert_decode!(0b111_10000, LD(Reg8(A), HighMemImm8));
   }
 
   #[test]
   fn ld_c_a() {
-    assert_decode!(0b111_00010, LD(PtrReg8(C), Reg8(A)));
+    assert_decode!(0b111_00010, LD(HighMemReg8(C), Reg8(A)));
   }
 
   #[test]
   fn ld_a_c() {
-    assert_decode!(0b111_10010, LD(Reg8(A), PtrReg8(C)));
+    assert_decode!(0b111_10010, LD(Reg8(A), HighMemReg8(C)));
   }
 
   #[test]
