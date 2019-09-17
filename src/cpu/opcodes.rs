@@ -1,6 +1,6 @@
 #[derive(Debug, PartialEq)]
 pub enum Opcode {
-  Nop,
+  NOP,
   LD(Arg, Arg),
   ADD(Arg, Arg),
   INC(Arg),
@@ -77,11 +77,10 @@ fn op_match(opcode: u8, mask: u8, expectation: u8) -> bool {
 
 pub fn decode(byte: u8) -> Opcode {
   match byte {
-    0x0 => Nop,
+    0x0 => NOP,
     0b0000_1000 => LD(Addr16, Reg16(SP)),
     _ if op_match(byte, 0b1100_1111, 0b0000_0001) => LD(Reg16(reg16(byte, 1, 2)), Imm16),
     _ if op_match(byte, 0b1100_1111, 0b0000_1001) => ADD(Reg16(HL), Reg16(reg16(byte, 1, 2))),
-    _ if op_match(byte, 0b1110_1111, 0b0000_0010) => LD(Reg16(reg16(byte, 0, 2)), Reg8(A)),
     _ if op_match(byte, 0b1110_1111, 0b0000_0010) => LD(Reg16(reg16(byte, 0, 2)), Reg8(A)),
     _ if op_match(byte, 0b1110_1111, 0b0000_1010) => LD(Reg8(A), Reg16(reg16(byte, 0, 2))),
     _ if op_match(byte, 0b1100_1111, 0b0000_0011) => INC(Reg16(reg16(byte, 1, 2))),
@@ -212,7 +211,7 @@ mod test {
 
   #[test]
   fn decode_nop() {
-    assert_decode!(0x0, Nop);
+    assert_decode!(0x0, NOP);
   }
 
   #[test]

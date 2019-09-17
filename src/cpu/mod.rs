@@ -2,12 +2,12 @@ pub mod opcodes;
 pub mod registers;
 
 use super::mmu::MMU;
+use opcodes::Opcode;
 use registers::{Flag, Register16, Register8, Registers};
 
 use Flag::*;
 use Register16::*;
 use Register8::*;
-
 pub struct CPU {
   regs: Registers,
   interrupts: u32,
@@ -28,15 +28,16 @@ impl CPU {
     let current_pc = self.regs.read16(PC);
 
     let byte = mmu.read8(current_pc as usize);
+    let opcode = opcodes::decode(byte);
 
-    let new_pc = self.exec_opcode(byte, current_pc, mmu);
+    let new_pc = self.exec_opcode(opcode, current_pc, mmu);
 
     self.regs.set_pc(new_pc);
   }
 
   // executes the given opcode
   #[allow(unused_macros)]
-  fn exec_opcode(&mut self, opcode: u8, pc: u16, mmu: &mut MMU) -> u16 {
+  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut MMU) -> u16 {
     macro_rules! alu_add_a {
       ($d:expr) => {{
         let a = self.regs.a();
@@ -153,6 +154,13 @@ impl CPU {
       }};
     }
 
+    macro_rules! alu_cp_a {
+      ($d:expr) => {{
+        // TODO
+        panic!("Not implemented yet");
+      }};
+    }
+
     macro_rules! alu_add_hl {
       ($d:expr) => {{
         let hl = self.regs.hl();
@@ -169,252 +177,120 @@ impl CPU {
       }};
     }
 
+    use opcodes::{AluOp::*, Arg::*, JumpCondition::*, Opcode::*};
+
     match opcode {
       // NOP, do nothing
-      0x00 => pc + 1,
+      NOP => pc + 1,
 
-      // LD (N), SP
-      0x08 => {
-        mmu.write16(self.read_arg16(mmu) as usize, self.regs.sp());
+      LD(Addr16, Reg16(reg16)) => {
+        mmu.write16(self.read_arg16(mmu) as usize, self.regs.read16(reg16));
         pc + 3
       }
 
-      // // LD R, N
-      0b0000_0001 => {
-        self.regs.write16(BC, self.read_arg16(mmu));
-        pc + 3
-      }
-      0b0001_0001 => {
-        self.regs.write16(DE, self.read_arg16(mmu));
-        pc + 3
-      }
-      0b0010_0001 => {
-        self.regs.write16(HL, self.read_arg16(mmu));
-        pc + 3
-      }
-      0b0011_0001 => {
-        self.regs.write16(SP, self.read_arg16(mmu));
+      LD(Reg16(reg16), Imm16) => {
+        self.regs.write16(reg16, self.read_arg16(mmu));
         pc + 3
       }
 
-      // ADD HL, R
-      0b0000_1001 => alu_add_hl!(self.regs.bc()),
-      0b0001_1001 => alu_add_hl!(self.regs.de()),
-      0b0010_1001 => alu_add_hl!(self.regs.hl()),
-      0b0011_1001 => alu_add_hl!(self.regs.sp()),
+      ADD(Reg16(HL), Reg16(reg16)) => alu_add_hl!(self.regs.read16(reg16)),
 
-      // LD (R), A
-      0b0000_0010 => {
-        mmu.write8(self.regs.bc() as usize, self.regs.a());
-        pc + 1
-      }
-      0b0001_0010 => {
-        mmu.write8(self.regs.de() as usize, self.regs.a());
+      LD(Reg16(reg16), Reg8(reg8)) => {
+        mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
         pc + 1
       }
 
-      // LD A, (R)
-      0b0000_1010 => {
-        self.regs.write8(A, mmu.read8(self.regs.bc() as usize));
-        pc + 1
-      }
-      0b0001_1010 => {
-        self.regs.write8(A, mmu.read8(self.regs.de() as usize));
+      LD(Reg8(reg8), Reg16(reg16)) => {
+        self
+          .regs
+          .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
         pc + 1
       }
 
-      // INC R
-      0b0000_0011 => {
-        self.regs.set_bc(self.regs.bc().wrapping_add(1));
-        pc + 1
-      }
-      0b0001_0011 => {
-        self.regs.set_de(self.regs.de().wrapping_add(1));
-        pc + 1
-      }
-      0b0010_0011 => {
-        self.regs.set_hl(self.regs.hl().wrapping_add(1));
-        pc + 1
-      }
-      0b0011_0011 => {
-        self.regs.set_sp(self.regs.sp().wrapping_add(1));
+      INC(Reg16(reg16)) => {
+        self
+          .regs
+          .write16(reg16, self.regs.read16(reg16).wrapping_add(1));
         pc + 1
       }
 
-      // DEC R
-      0b0000_1011 => {
-        self.regs.set_bc(self.regs.bc().wrapping_sub(1));
-        pc + 1
-      }
-      0b0001_1011 => {
-        self.regs.set_de(self.regs.de().wrapping_sub(1));
-        pc + 1
-      }
-      0b0010_1011 => {
-        self.regs.set_hl(self.regs.hl().wrapping_sub(1));
-        pc + 1
-      }
-      0b0011_1011 => {
-        self.regs.set_sp(self.regs.sp().wrapping_sub(1));
+      DEC(Reg16(reg16)) => {
+        self
+          .regs
+          .write16(reg16, self.regs.read16(reg16).wrapping_sub(1));
         pc + 1
       }
 
-      // INC D
-      0b0000_0100 => {
-        let v = self.alu_inc(self.regs.b());
-        self.regs.set_b(v);
+      INC(Reg8(reg8)) => {
+        let v = self.alu_inc(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
         pc + 1
       }
-      0b0000_1100 => {
-        let v = self.alu_inc(self.regs.c());
-        self.regs.set_c(v);
-        pc + 1
-      }
-      0b0001_0100 => {
-        let v = self.alu_inc(self.regs.d());
-        self.regs.set_d(v);
-        pc + 1
-      }
-      0b0001_1100 => {
-        let v = self.alu_inc(self.regs.e());
-        self.regs.set_e(v);
-        pc + 1
-      }
-      0b0010_0100 => {
-        let v = self.alu_inc(self.regs.h());
-        self.regs.set_h(v);
-        pc + 1
-      }
-      0b0010_1100 => {
-        let v = self.alu_inc(self.regs.l());
-        self.regs.set_l(v);
-        pc + 1
-      }
-      0b0011_0100 => {
+
+      INC(PtrHL) => {
         let ptr: usize = self.regs.hl() as usize;
         let v = self.alu_inc(mmu.read8(ptr));
         mmu.write8(ptr, v);
         pc + 1
       }
-      0b0011_1100 => {
-        let v = self.alu_inc(self.regs.a());
-        self.regs.set_a(v);
+
+      DEC(Reg8(reg8)) => {
+        let v = self.alu_dec(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
         pc + 1
       }
 
-      // DEC D
-      0b0000_0101 => {
-        let v = self.alu_dec(self.regs.b());
-        self.regs.set_b(v);
-        pc + 1
-      }
-      0b0000_1101 => {
-        let v = self.alu_dec(self.regs.c());
-        self.regs.set_c(v);
-        pc + 1
-      }
-      0b0001_0101 => {
-        let v = self.alu_dec(self.regs.d());
-        self.regs.set_d(v);
-        pc + 1
-      }
-      0b0001_1101 => {
-        let v = self.alu_dec(self.regs.e());
-        self.regs.set_e(v);
-        pc + 1
-      }
-      0b0010_0101 => {
-        let v = self.alu_dec(self.regs.h());
-        self.regs.set_h(v);
-        pc + 1
-      }
-      0b0010_1101 => {
-        let v = self.alu_dec(self.regs.l());
-        self.regs.set_l(v);
-        pc + 1
-      }
-      0b0011_0101 => {
+      DEC(PtrHL) => {
         let ptr: usize = self.regs.hl() as usize;
         let v = self.alu_dec(mmu.read8(ptr));
         mmu.write8(ptr, v);
         pc + 1
       }
-      0b0011_1101 => {
-        let v = self.alu_dec(self.regs.a());
-        self.regs.set_a(v);
-        pc + 1
+
+      LD(Reg8(reg8), Imm8) => {
+        self.regs.write8(reg8, self.read_arg8(mmu));
+        pc + 2
       }
 
-      // LD D, N
-      0b0000_0110 => {
-        self.regs.set_b(self.read_arg8(mmu));
-        pc + 2
-      }
-      0b0000_1110 => {
-        self.regs.set_c(self.read_arg8(mmu));
-        pc + 2
-      }
-      0b0001_0110 => {
-        self.regs.set_d(self.read_arg8(mmu));
-        pc + 2
-      }
-      0b0001_1110 => {
-        self.regs.set_e(self.read_arg8(mmu));
-        pc + 2
-      }
-      0b0010_0110 => {
-        self.regs.set_h(self.read_arg8(mmu));
-        pc + 2
-      }
-      0b0010_1110 => {
-        self.regs.set_l(self.read_arg8(mmu));
-        pc + 2
-      }
-      0b0011_0110 => {
+      LD(PtrHL, Imm8) => {
         let ptr: usize = self.regs.hl() as usize;
         mmu.write8(ptr, self.read_arg8(mmu));
         pc + 2
       }
-      0b0011_1110 => {
-        self.regs.set_a(self.read_arg8(mmu));
-        pc + 2
-      }
 
       // RdCA
-      0b0000_0111 => {
+      RLCA => {
         let v = self.alu_rlc(self.regs.a());
         self.regs.set_a(v);
         pc + 1
       }
-      0b0000_1111 => {
+
+      RRCA => {
         let v = self.alu_rrc(self.regs.a());
         self.regs.set_a(v);
         pc + 1
       }
 
-      0b0001_0111 => {
+      RLA => {
         let v = self.alu_rl(self.regs.a());
         self.regs.set_a(v);
         pc + 1
       }
 
-      0b0001_1111 => {
+      RRA => {
         let v = self.alu_rr(self.regs.a());
         self.regs.set_a(v);
         pc + 1
       }
 
-      // STOP
-      0b0001_0000 => {
+      STOP => {
         // TODO
         1
       }
 
-      // JR N
-      0b0001_1000 => pc + self.read_arg8(mmu) as u16,
+      JUMP(Always, Imm8) => pc + self.read_arg8(mmu) as u16,
 
-      // JR F, N
-      0b0010_0000 => {
+      JUMP(NotZero, Imm8) => {
         println!("flag value: {}", self.regs.get_flag(ZF));
         if !self.regs.get_flag(ZF) {
           println!("jumping");
@@ -423,21 +299,24 @@ impl CPU {
           pc + 2
         }
       }
-      0b0010_1000 => {
+
+      JUMP(Zero, Imm8) => {
         if self.regs.get_flag(ZF) {
           pc + self.read_arg8(mmu) as u16
         } else {
           pc + 2
         }
       }
-      0b0011_0000 => {
+
+      JUMP(NotCarry, Imm8) => {
         if !self.regs.get_flag(CF) {
           pc + self.read_arg8(mmu) as u16
         } else {
           pc + 2
         }
       }
-      0b0011_1000 => {
+
+      JUMP(Carry, Imm8) => {
         if self.regs.get_flag(CF) {
           pc + self.read_arg8(mmu) as u16
         } else {
@@ -445,509 +324,172 @@ impl CPU {
         }
       }
 
-      // LDI (HL), A
-      0b0010_0010 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.a());
+      LDI(PtrHL, Reg8(reg8)) => {
+        mmu.write8(self.regs.hl() as usize, self.regs.read8(reg8));
         self.regs.set_hl(self.regs.hl().wrapping_add(1));
         pc + 1
       }
 
-      // LDI A, (HL)
-      0b0010_1010 => {
-        self.regs.set_a(mmu.read8(self.regs.hl() as usize));
+      LDI(Reg8(reg8), PtrHL) => {
+        self.regs.write8(reg8, mmu.read8(self.regs.hl() as usize));
         self.regs.set_hl(self.regs.hl().wrapping_add(1));
         pc + 1
       }
 
-      // LDD (HL), A
-      0b0011_0010 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.a());
+      LDD(PtrHL, Reg8(reg8)) => {
+        mmu.write8(self.regs.hl() as usize, self.regs.read8(reg8));
         self.regs.set_hl(self.regs.hl().wrapping_sub(1));
         pc + 1
       }
 
-      // LDD A, (HL)
-      0b0011_1010 => {
-        self.regs.set_a(mmu.read8(self.regs.hl() as usize));
+      LDD(Reg8(reg8), PtrHL) => {
+        self.regs.write8(reg8, mmu.read8(self.regs.hl() as usize));
         self.regs.set_hl(self.regs.hl().wrapping_sub(1));
         pc + 1
       }
 
-      // DAA
-      0b0010_0111 => {
+      DAA => {
         self.alu_daa();
         pc + 1
       }
 
-      // CPL
-      0b0010_1111 => {
+      CPL => {
         self.regs.set_a(!self.regs.a());
         self.regs.set_flag(NF, true);
         self.regs.set_flag(HF, true);
         pc + 1
       }
 
-      // SCF
-      0b0011_0111 => {
+      SCF => {
         self.regs.set_flag(CF, true);
         self.regs.set_flag(NF, false);
         self.regs.set_flag(HF, false);
         pc + 1
       }
 
-      // CCF
-      0b0011_1111 => {
+      CCF => {
         self.regs.set_flag(CF, !self.regs.get_flag(CF));
         self.regs.set_flag(NF, false);
         self.regs.set_flag(HF, false);
         pc + 1
       }
 
-      // LD B, r8
-      0b0100_0000 => {
-        self.regs.set_b(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0100_0001 => {
-        self.regs.set_b(self.regs.c());
-        pc + 1
-      }
-      0b0100_0010 => {
-        self.regs.set_b(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0100_0011 => {
-        self.regs.set_b(self.regs.e());
-        pc + 1
-      }
-      0b0100_0100 => {
-        self.regs.set_b(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0100_0101 => {
-        self.regs.set_b(self.regs.l());
-        pc + 1
-      }
-      0b0100_0110 => {
-        self.regs.set_b(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0100_0111 => {
-        self.regs.set_b(self.regs.a());
+      LD(Reg8(reg8_dest), Reg8(reg8_orig)) => {
+        self.regs.write8(reg8_dest, self.regs.read8(reg8_orig));
         pc + 1
       }
 
-      // LD C, r8
-      0b0100_1000 => {
-        self.regs.set_c(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0100_1001 => {
-        self.regs.set_c(self.regs.c());
-        pc + 1
-      }
-      0b0100_1010 => {
-        self.regs.set_c(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0100_1011 => {
-        self.regs.set_c(self.regs.e());
-        pc + 1
-      }
-      0b0100_1100 => {
-        self.regs.set_c(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0100_1101 => {
-        self.regs.set_c(self.regs.l());
-        pc + 1
-      }
-      0b0100_1110 => {
-        self.regs.set_c(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0100_1111 => {
-        self.regs.set_c(self.regs.a());
+      LD(Reg8(reg8_dest), PtrHL) => {
+        self
+          .regs
+          .write8(reg8_dest, mmu.read8(self.regs.hl() as usize));
         pc + 1
       }
 
-      // LD D, r8
-      0b0101_0000 => {
-        self.regs.set_d(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0101_0001 => {
-        self.regs.set_d(self.regs.c());
-        pc + 1
-      }
-      0b0101_0010 => {
-        self.regs.set_d(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0101_0011 => {
-        self.regs.set_d(self.regs.e());
-        pc + 1
-      }
-      0b0101_0100 => {
-        self.regs.set_d(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0101_0101 => {
-        self.regs.set_d(self.regs.l());
-        pc + 1
-      }
-      0b0101_0110 => {
-        self.regs.set_d(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0101_0111 => {
-        self.regs.set_d(self.regs.a());
+      LD(PtrHL, Reg8(reg8_orig)) => {
+        mmu.write8(self.regs.hl() as usize, self.regs.read8(reg8_orig));
         pc + 1
       }
 
-      // LD E, r8
-      0b0101_1000 => {
-        self.regs.set_e(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0101_1001 => {
-        self.regs.set_e(self.regs.c());
-        pc + 1
-      }
-      0b0101_1010 => {
-        self.regs.set_e(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0101_1011 => {
-        self.regs.set_e(self.regs.e());
-        pc + 1
-      }
-      0b0101_1100 => {
-        self.regs.set_e(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0101_1101 => {
-        self.regs.set_e(self.regs.l());
-        pc + 1
-      }
-      0b0101_1110 => {
-        self.regs.set_e(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0101_1111 => {
-        self.regs.set_e(self.regs.a());
-        pc + 1
-      }
-
-      // LD H, r8
-      0b0110_0000 => {
-        self.regs.set_h(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0110_0001 => {
-        self.regs.set_h(self.regs.c());
-        pc + 1
-      }
-      0b0110_0010 => {
-        self.regs.set_h(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0110_0011 => {
-        self.regs.set_h(self.regs.e());
-        pc + 1
-      }
-      0b0110_0100 => {
-        self.regs.set_h(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0110_0101 => {
-        self.regs.set_h(self.regs.l());
-        pc + 1
-      }
-      0b0110_0110 => {
-        self.regs.set_h(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0110_0111 => {
-        self.regs.set_h(self.regs.a());
-        pc + 1
-      }
-
-      // LD L, r8
-      0b0110_1000 => {
-        self.regs.set_l(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0110_1001 => {
-        self.regs.set_l(self.regs.c());
-        pc + 1
-      }
-      0b0110_1010 => {
-        self.regs.set_l(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0110_1011 => {
-        self.regs.set_l(self.regs.e());
-        pc + 1
-      }
-      0b0110_1100 => {
-        self.regs.set_l(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0110_1101 => {
-        self.regs.set_l(self.regs.l());
-        pc + 1
-      }
-      0b0110_1110 => {
-        self.regs.set_l(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0110_1111 => {
-        self.regs.set_l(self.regs.a());
-        pc + 1
-      }
-
-      // LD (HL), r8
-      0b0111_0000 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.b());
-        pc + 1
-      }
-      0b0111_0001 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.c());
-        pc + 1
-      }
-      0b0111_0010 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.d());
-        pc + 1
-      }
-      0b0111_0011 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.e());
-        pc + 1
-      }
-      0b0111_0100 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.h());
-        pc + 1
-      }
-      0b0111_0101 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.l());
-        pc + 1
-      }
-      0b0111_0111 => {
-        mmu.write8(self.regs.hl() as usize, self.regs.a());
-        pc + 1
-      }
-
-      // LD A, r8
-      0b0111_1000 => {
-        self.regs.set_a(self.regs.b()); // no-op
-        pc + 1
-      }
-      0b0111_1001 => {
-        self.regs.set_a(self.regs.c());
-        pc + 1
-      }
-      0b0111_1010 => {
-        self.regs.set_a(self.regs.d()); // no-op
-        pc + 1
-      }
-      0b0111_1011 => {
-        self.regs.set_a(self.regs.e());
-        pc + 1
-      }
-      0b0111_1100 => {
-        self.regs.set_a(self.regs.h()); // no-op
-        pc + 1
-      }
-      0b0111_1101 => {
-        self.regs.set_a(self.regs.l());
-        pc + 1
-      }
-      0b0111_1110 => {
-        self.regs.set_a(mmu.read8(self.regs.hl() as usize)); // no-op
-        pc + 1
-      }
-      0b0111_1111 => {
-        self.regs.set_a(self.regs.a());
-        pc + 1
-      }
-
-      // HALT
-      0b0111_0110 => {
+      HALT => {
         // TODO
         pc + 1
       }
 
-      // ADD A, D
-      0b1000_0000 => alu_add_a!(self.regs.b()),
-      0b1000_0001 => alu_add_a!(self.regs.c()),
-      0b1000_0010 => alu_add_a!(self.regs.d()),
-      0b1000_0011 => alu_add_a!(self.regs.e()),
-      0b1000_0100 => alu_add_a!(self.regs.h()),
-      0b1000_0101 => alu_add_a!(self.regs.l()),
-      0b1000_0110 => alu_add_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1000_0111 => alu_add_a!(self.regs.a()),
-      // ADD A, N
-      0b1100_0110 => {
+      ALU(Add, Reg8(A), Reg8(reg8)) => alu_add_a!(self.regs.read8(reg8)),
+      ALU(Add, Reg8(A), PtrHL) => alu_add_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Add, Reg8(A), Imm8) => {
         alu_add_a!(self.read_arg8(mmu));
         2
       }
 
-      // ADC A, D
-      0b1000_1000 => alu_adc_a!(self.regs.b()),
-      0b1000_1001 => alu_adc_a!(self.regs.c()),
-      0b1000_1010 => alu_adc_a!(self.regs.d()),
-      0b1000_1011 => alu_adc_a!(self.regs.e()),
-      0b1000_1100 => alu_adc_a!(self.regs.h()),
-      0b1000_1101 => alu_adc_a!(self.regs.l()),
-      0b1000_1110 => alu_adc_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1000_1111 => alu_adc_a!(self.regs.a()),
-      // ADC A, N
-      0b1100_1110 => {
+      ALU(Adc, Reg8(A), Reg8(reg8)) => alu_adc_a!(self.regs.read8(reg8)),
+      ALU(Adc, Reg8(A), PtrHL) => alu_adc_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Adc, Reg8(A), Imm8) => {
         alu_adc_a!(self.read_arg8(mmu));
         2
       }
 
-      // SUB A, D
-      0b1001_0000 => alu_sub_a!(self.regs.b()),
-      0b1001_0001 => alu_sub_a!(self.regs.c()),
-      0b1001_0010 => alu_sub_a!(self.regs.d()),
-      0b1001_0011 => alu_sub_a!(self.regs.e()),
-      0b1001_0100 => alu_sub_a!(self.regs.h()),
-      0b1001_0101 => alu_sub_a!(self.regs.l()),
-      0b1001_0110 => alu_sub_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1001_0111 => alu_sub_a!(self.regs.a()),
-      // SUB A, N
-      0b1101_0110 => {
+      ALU(Sub, Reg8(A), Reg8(reg8)) => alu_sub_a!(self.regs.read8(reg8)),
+      ALU(Sub, Reg8(A), PtrHL) => alu_sub_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Sub, Reg8(A), Imm8) => {
         alu_sub_a!(self.read_arg8(mmu));
         2
       }
 
-      // SUB A, D
-      0b1001_1000 => alu_sbc_a!(self.regs.b()),
-      0b1001_1001 => alu_sbc_a!(self.regs.c()),
-      0b1001_1010 => alu_sbc_a!(self.regs.d()),
-      0b1001_1011 => alu_sbc_a!(self.regs.e()),
-      0b1001_1100 => alu_sbc_a!(self.regs.h()),
-      0b1001_1101 => alu_sbc_a!(self.regs.l()),
-      0b1001_1110 => alu_sbc_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1001_1111 => alu_sbc_a!(self.regs.a()),
-      // sbc A, N
-      0b1101_1110 => {
+      ALU(Sbc, Reg8(A), Reg8(reg8)) => alu_sbc_a!(self.regs.read8(reg8)),
+      ALU(Sbc, Reg8(A), PtrHL) => alu_sbc_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Sbc, Reg8(A), Imm8) => {
         alu_sbc_a!(self.read_arg8(mmu));
         2
       }
 
-      // AND A, D
-      0b1010_0000 => alu_and_a!(self.regs.b()),
-      0b1010_0001 => alu_and_a!(self.regs.c()),
-      0b1010_0010 => alu_and_a!(self.regs.d()),
-      0b1010_0011 => alu_and_a!(self.regs.e()),
-      0b1010_0100 => alu_and_a!(self.regs.h()),
-      0b1010_0101 => alu_and_a!(self.regs.l()),
-      0b1010_0110 => alu_and_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1010_0111 => alu_and_a!(self.regs.a()),
-      // ADD A, N
-      0b1110_0110 => {
+      ALU(And, Reg8(A), Reg8(reg8)) => alu_and_a!(self.regs.read8(reg8)),
+      ALU(And, Reg8(A), PtrHL) => alu_and_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(And, Reg8(A), Imm8) => {
         alu_and_a!(self.read_arg8(mmu));
         2
       }
 
-      // XOR A, D
-      0b1010_1000 => alu_xor_a!(self.regs.b()),
-      0b1010_1001 => alu_xor_a!(self.regs.c()),
-      0b1010_1010 => alu_xor_a!(self.regs.d()),
-      0b1010_1011 => alu_xor_a!(self.regs.e()),
-      0b1010_1100 => alu_xor_a!(self.regs.h()),
-      0b1010_1101 => alu_xor_a!(self.regs.l()),
-      0b1010_1110 => alu_xor_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1010_1111 => alu_xor_a!(self.regs.a()),
-      // ADD A, N
-      0b1110_1110 => {
+      ALU(Xor, Reg8(A), Reg8(reg8)) => alu_xor_a!(self.regs.read8(reg8)),
+      ALU(Xor, Reg8(A), PtrHL) => alu_xor_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Xor, Reg8(A), Imm8) => {
         alu_xor_a!(self.read_arg8(mmu));
         2
       }
 
-      // XOR A, D
-      0b1011_0000 => alu_or_a!(self.regs.b()),
-      0b1011_0001 => alu_or_a!(self.regs.c()),
-      0b1011_0010 => alu_or_a!(self.regs.d()),
-      0b1011_0011 => alu_or_a!(self.regs.e()),
-      0b1011_0100 => alu_or_a!(self.regs.h()),
-      0b1011_0101 => alu_or_a!(self.regs.l()),
-      0b1011_0110 => alu_or_a!(mmu.read8(self.regs.hl() as usize)),
-      0b1011_0111 => alu_or_a!(self.regs.a()),
-      // OR A, N
-      0b1111_0110 => {
+      ALU(Or, Reg8(A), Reg8(reg8)) => alu_or_a!(self.regs.read8(reg8)),
+      ALU(Or, Reg8(A), PtrHL) => alu_or_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Or, Reg8(A), Imm8) => {
         alu_or_a!(self.read_arg8(mmu));
         2
       }
 
-      // POP R
-      0b1100_0001 => {
-        let v = self.pop(mmu);
-        self.regs.set_bc(v);
-        pc + 1
+      ALU(Cp, Reg8(A), Reg8(reg8)) => alu_cp_a!(self.regs.read8(reg8)),
+      ALU(Cp, Reg8(A), PtrHL) => alu_cp_a!(mmu.read8(self.regs.hl() as usize)),
+      ALU(Cp, Reg8(A), Imm8) => {
+        alu_cp_a!(self.read_arg8(mmu));
+        2
       }
-      0b1101_0001 => {
+
+      POP(reg16) => {
         let v = self.pop(mmu);
-        self.regs.set_de(v);
-        pc + 1
-      }
-      0b1110_0001 => {
-        let v = self.pop(mmu);
-        self.regs.set_hl(v);
-        pc + 1
-      }
-      0b1111_0001 => {
-        let v = self.pop(mmu);
-        self.regs.set_af(v);
+        self.regs.write16(reg16, v);
         pc + 1
       }
 
-      //  R
-      0b1100_0101 => {
-        self.push(self.regs.bc(), mmu);
-        pc + 1
-      }
-      0b1101_0101 => {
-        self.push(self.regs.de(), mmu);
-        pc + 1
-      }
-      0b1110_0101 => {
-        self.push(self.regs.hl(), mmu);
-        pc + 1
-      }
-      0b1111_0101 => {
-        self.push(self.regs.af(), mmu);
+      PUSH(reg16) => {
+        self.push(self.regs.read16(reg16), mmu);
         pc + 1
       }
 
-      // RET NZ
-      0b1100_0000 => {
+      RST(_) => panic!("Not Implemented yet"),
+
+      RET(NotZero) => {
         if !self.regs.get_flag(ZF) {
           self.pop(mmu)
         } else {
           pc + 1
         }
       }
-      // RET Z
-      0b1100_1000 => {
+
+      RET(Zero) => {
         if self.regs.get_flag(ZF) {
           self.pop(mmu)
         } else {
           pc + 1
         }
       }
-      // RET NC
-      0b1101_0000 => {
+
+      RET(NotCarry) => {
         if !self.regs.get_flag(CF) {
           self.pop(mmu)
         } else {
           pc + 1
         }
       }
-      // RET C
-      0b1101_1000 => {
+
+      RET(Carry) => {
         if self.regs.get_flag(CF) {
           self.pop(mmu)
         } else {
@@ -955,41 +497,38 @@ impl CPU {
         }
       }
 
-      // RET
-      0b1100_1001 => self.pop(mmu),
+      RET(Always) => self.pop(mmu),
 
-      // RETI
-      0b1101_1001 => {
+      RETI => {
         self.interrupts = 1;
         self.pop(mmu)
       }
 
-      // JP NZ, N
-      0b1100_0010 => {
+      JUMP(NotZero, Addr16) => {
         if !self.regs.get_flag(ZF) {
           self.read_arg16(mmu)
         } else {
           pc + 3
         }
       }
-      // JP Z, N
-      0b1100_1010 => {
+
+      JUMP(Zero, Addr16) => {
         if self.regs.get_flag(ZF) {
           self.read_arg16(mmu)
         } else {
           pc + 3
         }
       }
-      // JP NC, N
-      0b1101_0010 => {
+
+      JUMP(NotCarry, Addr16) => {
         if !self.regs.get_flag(CF) {
           self.read_arg16(mmu)
         } else {
           pc + 3
         }
       }
-      // JP C N
-      0b1101_1010 => {
+
+      JUMP(Carry, Addr16) => {
         if self.regs.get_flag(CF) {
           self.read_arg16(mmu)
         } else {
@@ -997,12 +536,9 @@ impl CPU {
         }
       }
 
-      // JP N
-      0b1100_0011 => self.read_arg16(mmu),
+      JUMP(Always, Addr16) => self.read_arg16(mmu),
 
-      // CALL F, N
-      // CALL NZ, N
-      0b1100_0100 => {
+      CALL(NotZero, Addr16) => {
         if !self.regs.get_flag(ZF) {
           self.push(pc + 3, mmu);
           self.read_arg16(mmu)
@@ -1010,8 +546,8 @@ impl CPU {
           pc + 3
         }
       }
-      // CALL Z, N
-      0b1100_1100 => {
+
+      CALL(Zero, Addr16) => {
         if self.regs.get_flag(ZF) {
           self.push(pc + 3, mmu);
           self.read_arg16(mmu)
@@ -1019,8 +555,8 @@ impl CPU {
           pc + 3
         }
       }
-      // CALL NC, N
-      0b1101_0100 => {
+
+      CALL(NotCarry, Addr16) => {
         if !self.regs.get_flag(CF) {
           self.push(pc + 3, mmu);
           self.read_arg16(mmu)
@@ -1028,8 +564,8 @@ impl CPU {
           pc + 3
         }
       }
-      // CALL C, N
-      0b1101_1100 => {
+
+      CALL(Carry, Addr16) => {
         if self.regs.get_flag(CF) {
           self.push(pc + 3, mmu);
           self.read_arg16(mmu)
@@ -1038,374 +574,361 @@ impl CPU {
         }
       }
 
-      // CALL N
-      0b1100_1101 => {
+      CALL(Always, Addr16) => {
         self.push(pc + 3, mmu);
         self.read_arg16(mmu)
       }
 
-      0b1110_1000 => {
+      ADD(Reg16(reg16), Imm8) => {
+        let v = self.alu_add16imm(self.regs.read16(reg16), mmu);
+        self.regs.write16(reg16, v);
+        pc + 2
+      }
+
+      LD(Reg16(reg16), SPPlusImm8) => {
         let v = self.alu_add16imm(self.regs.sp(), mmu);
-        self.regs.set_sp(v);
+        self.regs.write16(reg16, v);
         pc + 2
       }
 
-      // LD HL, SP + N
-      0b1111_1000 => {
-        let v = self.alu_add16imm(self.regs.sp(), mmu);
-        self.regs.set_hl(v);
-        pc + 2
-      }
-
-      // LD (FF00+N), A
-      0b1110_0000 => {
+      LD(FF00PlusImm8, Reg8(reg8)) => {
         let ptr = (0xFF00 | self.read_arg8(mmu) as u16) as usize;
-        mmu.write8(ptr, self.regs.a());
+        mmu.write8(ptr, self.regs.read8(reg8));
         pc + 2
       }
 
-      // LD A, (FF00+N)
-      0b1111_0000 => {
+      LD(Reg8(reg8), FF00PlusImm8) => {
         let ptr = (0xFF00 | self.read_arg8(mmu) as u16) as usize;
-        self.regs.set_a(mmu.read8(ptr));
+        self.regs.write8(reg8, mmu.read8(ptr));
         pc + 2
       }
 
-      // LD (C), A
-      0b1110_0010 => {
+      LD(PtrC, Reg8(reg8)) => {
         let ptr = (0xFF00 | self.regs.c() as u16) as usize;
-        mmu.write8(ptr, self.regs.a());
+        mmu.write8(ptr, self.regs.read8(reg8));
         pc + 2
       }
 
-      // LD A, (C)
-      0b1111_0010 => {
+      LD(Reg8(reg8), PtrC) => {
         let ptr = (0xFF00 | self.regs.c() as u16) as usize;
-        self.regs.set_a(mmu.read8(ptr));
+        self.regs.write8(reg8, mmu.read8(ptr));
         pc + 2
       }
 
-      // LD (N), A
-      0b1110_1010 => {
+      LD(Addr16, Reg8(reg8)) => {
         let ptr = self.read_arg16(mmu) as usize;
-        mmu.write8(ptr, self.regs.a());
+        mmu.write8(ptr, self.regs.read8(reg8));
         pc + 2
       }
 
-      // LD A, (N)
-      0b1111_1010 => {
+      LD(Reg8(reg8), Addr16) => {
         let ptr = self.read_arg16(mmu) as usize;
-        self.regs.set_a(mmu.read8(ptr));
+        self.regs.write8(reg8, mmu.read8(ptr));
         pc + 2
       }
 
-      // JP HL
-      0b1110_1001 => self.regs.hl(),
+      JUMP(Always, Reg16(reg16)) => self.regs.read16(reg16),
 
-      // LD SP, HL
-      0b1111_1001 => {
-        self.regs.set_sp(self.regs.hl());
+      LD(Reg16(reg16_dest), Reg16(reg16_orig)) => {
+        self.regs.write16(reg16_dest, self.regs.read16(reg16_orig));
         pc + 1
       }
 
-      // DI
-      0b1111_0011 => {
+      DI => {
         self.interrupts = 0;
         pc + 1
       }
 
-      // EI
-      0b1111_1011 => {
+      EI => {
         self.interrupts = 1;
         pc + 1
       }
 
-      // read instr from byte 2
-      0xCB => self.exec_cb(self.read_arg8(mmu), pc, mmu),
+      CALLBACK => self.exec_cb(self.read_arg8(mmu), pc, mmu),
 
-      _ => self.i_unknown(opcode),
+      _ => panic!("Unexpected opcode: {:?}", opcode),
     }
   }
 
   fn exec_cb(&mut self, opcode: u8, pc: u16, mmu: &mut MMU) -> u16 {
     println!("exec_cb {:#2x}", opcode);
-    match opcode {
+    match ((), opcode) {
       // RLC D
-      0b0000_0000 => {
+      (_, 0b0000_0000) => {
         let v = self.alu_rlc(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0000_0001 => {
+      (_, 0b0000_0001) => {
         let v = self.alu_rlc(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0000_0010 => {
+      (_, 0b0000_0010) => {
         let v = self.alu_rlc(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0000_0011 => {
+      (_, 0b0000_0011) => {
         let v = self.alu_rlc(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0000_0100 => {
+      (_, 0b0000_0100) => {
         let v = self.alu_rlc(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0000_0101 => {
+      (_, 0b0000_0101) => {
         let v = self.alu_rlc(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0000_0110 => {
+      (_, 0b0000_0110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rlc(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0000_0111 => {
+      (_, 0b0000_0111) => {
         let v = self.alu_rlc(self.regs.a());
         self.regs.set_a(v);
       }
 
       // RRC D
-      0b0000_1000 => {
+      (_, 0b0000_1000) => {
         let v = self.alu_rrc(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0000_1001 => {
+      (_, 0b0000_1001) => {
         let v = self.alu_rrc(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0000_1010 => {
+      (_, 0b0000_1010) => {
         let v = self.alu_rrc(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0000_1011 => {
+      (_, 0b0000_1011) => {
         let v = self.alu_rrc(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0000_1100 => {
+      (_, 0b0000_1100) => {
         let v = self.alu_rrc(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0000_1101 => {
+      (_, 0b0000_1101) => {
         let v = self.alu_rrc(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0000_1110 => {
+      (_, 0b0000_1110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rrc(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0000_1111 => {
+      (_, 0b0000_1111) => {
         let v = self.alu_rrc(self.regs.a());
         self.regs.set_a(v);
       }
 
       // RL D
-      0b0001_0000 => {
+      (_, 0b0001_0000) => {
         let v = self.alu_rl(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0001_0001 => {
+      (_, 0b0001_0001) => {
         let v = self.alu_rl(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0001_0010 => {
+      (_, 0b0001_0010) => {
         let v = self.alu_rl(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0001_0011 => {
+      (_, 0b0001_0011) => {
         let v = self.alu_rl(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0001_0100 => {
+      (_, 0b0001_0100) => {
         let v = self.alu_rl(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0001_0101 => {
+      (_, 0b0001_0101) => {
         let v = self.alu_rl(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0001_0110 => {
+      (_, 0b0001_0110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rl(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0001_0111 => {
+      (_, 0b0001_0111) => {
         let v = self.alu_rl(self.regs.a());
         self.regs.set_a(v);
       }
 
       // RR D
-      0b0001_1000 => {
+      (_, 0b0001_1000) => {
         let v = self.alu_rr(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0001_1001 => {
+      (_, 0b0001_1001) => {
         let v = self.alu_rr(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0001_1010 => {
+      (_, 0b0001_1010) => {
         let v = self.alu_rr(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0001_1011 => {
+      (_, 0b0001_1011) => {
         let v = self.alu_rr(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0001_1100 => {
+      (_, 0b0001_1100) => {
         let v = self.alu_rr(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0001_1101 => {
+      (_, 0b0001_1101) => {
         let v = self.alu_rr(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0001_1110 => {
+      (_, 0b0001_1110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rr(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0001_1111 => {
+      (_, 0b0001_1111) => {
         let v = self.alu_rr(self.regs.a());
         self.regs.set_a(v);
       }
 
       // SLA D
-      0b0010_0000 => {
+      (_, 0b0010_0000) => {
         let v = self.alu_sla(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0010_0001 => {
+      (_, 0b0010_0001) => {
         let v = self.alu_sla(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0010_0010 => {
+      (_, 0b0010_0010) => {
         let v = self.alu_sla(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0010_0011 => {
+      (_, 0b0010_0011) => {
         let v = self.alu_sla(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0010_0100 => {
+      (_, 0b0010_0100) => {
         let v = self.alu_sla(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0010_0101 => {
+      (_, 0b0010_0101) => {
         let v = self.alu_sla(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0010_0110 => {
+      (_, 0b0010_0110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_sla(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0010_0111 => {
+      (_, 0b0010_0111) => {
         let v = self.alu_sla(self.regs.a());
         self.regs.set_a(v);
       }
 
       // SRA D
-      0b0010_1000 => {
+      (_, 0b0010_1000) => {
         let v = self.alu_sra(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0010_1001 => {
+      (_, 0b0010_1001) => {
         let v = self.alu_sra(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0010_1010 => {
+      (_, 0b0010_1010) => {
         let v = self.alu_sra(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0010_1011 => {
+      (_, 0b0010_1011) => {
         let v = self.alu_sra(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0010_1100 => {
+      (_, 0b0010_1100) => {
         let v = self.alu_sra(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0010_1101 => {
+      (_, 0b0010_1101) => {
         let v = self.alu_sra(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0010_1110 => {
+      (_, 0b0010_1110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_sra(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0010_1111 => {
+      (_, 0b0010_1111) => {
         let v = self.alu_sra(self.regs.a());
         self.regs.set_a(v);
       }
 
       // SWAP D
-      0b0011_0000 => {
+      (_, 0b0011_0000) => {
         let v = self.alu_swap(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0011_0001 => {
+      (_, 0b0011_0001) => {
         let v = self.alu_swap(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0011_0010 => {
+      (_, 0b0011_0010) => {
         let v = self.alu_swap(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0011_0011 => {
+      (_, 0b0011_0011) => {
         let v = self.alu_swap(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0011_0100 => {
+      (_, 0b0011_0100) => {
         let v = self.alu_swap(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0011_0101 => {
+      (_, 0b0011_0101) => {
         let v = self.alu_swap(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0011_0110 => {
+      (_, 0b0011_0110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_swap(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0011_0111 => {
+      (_, 0b0011_0111) => {
         let v = self.alu_swap(self.regs.a());
         self.regs.set_a(v);
       }
 
       // SRL D
-      0b0011_1000 => {
+      (_, 0b0011_1000) => {
         let v = self.alu_srl(self.regs.b());
         self.regs.set_b(v);
       }
-      0b0011_1001 => {
+      (_, 0b0011_1001) => {
         let v = self.alu_srl(self.regs.c());
         self.regs.set_c(v);
       }
-      0b0011_1010 => {
+      (_, 0b0011_1010) => {
         let v = self.alu_srl(self.regs.d());
         self.regs.set_d(v);
       }
-      0b0011_1011 => {
+      (_, 0b0011_1011) => {
         let v = self.alu_srl(self.regs.e());
         self.regs.set_e(v);
       }
-      0b0011_1100 => {
+      (_, 0b0011_1100) => {
         let v = self.alu_srl(self.regs.h());
         self.regs.set_h(v);
       }
-      0b0011_1101 => {
+      (_, 0b0011_1101) => {
         let v = self.alu_srl(self.regs.l());
         self.regs.set_l(v);
       }
-      0b0011_1110 => {
+      (_, 0b0011_1110) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_srl(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      0b0011_1111 => {
+      (_, 0b0011_1111) => {
         let v = self.alu_srl(self.regs.a());
         self.regs.set_a(v);
       }
