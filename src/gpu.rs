@@ -7,9 +7,9 @@ impl GPU {
     GPU {}
   }
 
-  pub fn read8(&self, index: usize) -> u8 {
+  pub fn read8(&self, _index: usize) -> u8 {
     1
   }
 
-  pub fn write8(&mut self, index: usize, value: u8) {}
+  pub fn write8(&mut self, _index: usize, _value: u8) {}
 }

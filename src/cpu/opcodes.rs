@@ -30,10 +30,26 @@ pub enum Opcode {
   CALLBACK,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ExtendedOpcode {
+  RLC(Arg),
+  RRC(Arg),
+  RL(Arg),
+  RR(Arg),
+  SLA(Arg),
+  SRA(Arg),
+  SWAP(Arg),
+  SRL(Arg),
+  BIT(u8, Arg),
+  RES(u8, Arg),
+  SET(u8, Arg),
+}
+
 use super::registers;
 use super::registers::{Register16::*, Register8::*};
 use AluOp::*;
 use Arg::*;
+use ExtendedOpcode::*;
 use JumpCondition::*;
 use Opcode::*;
 
@@ -132,7 +148,24 @@ pub fn decode(byte: u8) -> Opcode {
     0b1111_0011 => DI,
     0b1111_1011 => EI,
     0b11001011 => CALLBACK,
-    _ => panic!("Invalid opcode {:#02b}", byte),
+    _ => unreachable!("Invalid opcode {:#02b}", byte),
+  }
+}
+
+pub fn decode_extended(byte: u8) -> ExtendedOpcode {
+  match byte {
+    _ if op_match(byte, 0b11111000, 0b00000000) => RLC(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00001000) => RRC(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00010000) => RL(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00011000) => RR(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00100000) => SLA(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00101000) => SRA(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00110000) => SWAP(destination(byte, 5)),
+    _ if op_match(byte, 0b11111000, 0b00111000) => SRL(destination(byte, 5)),
+    _ if op_match(byte, 0b11000000, 0b01000000) => BIT(n(byte, 2), destination(byte, 5)),
+    _ if op_match(byte, 0b11000000, 0b10000000) => RES(n(byte, 2), destination(byte, 5)),
+    _ if op_match(byte, 0b11000000, 0b11000000) => SET(n(byte, 2), destination(byte, 5)),
+    _ => unreachable!("Invalid callback opcode {:#02b}", byte),
   }
 }
 
@@ -201,11 +234,16 @@ fn n(byte: u8, index: usize) -> u8 {
 #[cfg(test)]
 mod test {
   use super::*;
-  use super::{AluOp::*, Arg::*, JumpCondition::*, Opcode::*};
 
   macro_rules! assert_decode {
     ($op:expr, $expectation:expr) => {{
       assert_eq!(super::decode($op), $expectation);
+    }};
+  }
+
+  macro_rules! assert_decode_callback {
+    ($op:expr, $expectation:expr) => {{
+      assert_eq!(super::decode_extended($op), $expectation);
     }};
   }
 
@@ -605,5 +643,149 @@ mod test {
   #[test]
   fn callback() {
     assert_decode!(0b1100_1011, CALLBACK);
+  }
+
+  #[test]
+  fn rlc_d() {
+    assert_decode_callback!(0b00000_000, RLC(Reg8(B)));
+    assert_decode_callback!(0b00000_001, RLC(Reg8(C)));
+    assert_decode_callback!(0b00000_010, RLC(Reg8(D)));
+    assert_decode_callback!(0b00000_011, RLC(Reg8(E)));
+    assert_decode_callback!(0b00000_100, RLC(Reg8(H)));
+    assert_decode_callback!(0b00000_101, RLC(Reg8(L)));
+    assert_decode_callback!(0b00000_110, RLC(PtrHL));
+    assert_decode_callback!(0b00000_111, RLC(Reg8(A)));
+  }
+
+  #[test]
+  fn rrc_d() {
+    assert_decode_callback!(0b00001_000, RRC(Reg8(B)));
+    assert_decode_callback!(0b00001_001, RRC(Reg8(C)));
+    assert_decode_callback!(0b00001_010, RRC(Reg8(D)));
+    assert_decode_callback!(0b00001_011, RRC(Reg8(E)));
+    assert_decode_callback!(0b00001_100, RRC(Reg8(H)));
+    assert_decode_callback!(0b00001_101, RRC(Reg8(L)));
+    assert_decode_callback!(0b00001_110, RRC(PtrHL));
+    assert_decode_callback!(0b00001_111, RRC(Reg8(A)));
+  }
+
+  #[test]
+  fn rl_d() {
+    assert_decode_callback!(0b00010_000, RL(Reg8(B)));
+    assert_decode_callback!(0b00010_001, RL(Reg8(C)));
+    assert_decode_callback!(0b00010_010, RL(Reg8(D)));
+    assert_decode_callback!(0b00010_011, RL(Reg8(E)));
+    assert_decode_callback!(0b00010_100, RL(Reg8(H)));
+    assert_decode_callback!(0b00010_101, RL(Reg8(L)));
+    assert_decode_callback!(0b00010_110, RL(PtrHL));
+    assert_decode_callback!(0b00010_111, RL(Reg8(A)));
+  }
+
+  #[test]
+  fn rr_d() {
+    assert_decode_callback!(0b00011_000, RR(Reg8(B)));
+    assert_decode_callback!(0b00011_001, RR(Reg8(C)));
+    assert_decode_callback!(0b00011_010, RR(Reg8(D)));
+    assert_decode_callback!(0b00011_011, RR(Reg8(E)));
+    assert_decode_callback!(0b00011_100, RR(Reg8(H)));
+    assert_decode_callback!(0b00011_101, RR(Reg8(L)));
+    assert_decode_callback!(0b00011_110, RR(PtrHL));
+    assert_decode_callback!(0b00011_111, RR(Reg8(A)));
+  }
+
+  #[test]
+  fn sla_d() {
+    assert_decode_callback!(0b00100_000, SLA(Reg8(B)));
+    assert_decode_callback!(0b00100_001, SLA(Reg8(C)));
+    assert_decode_callback!(0b00100_010, SLA(Reg8(D)));
+    assert_decode_callback!(0b00100_011, SLA(Reg8(E)));
+    assert_decode_callback!(0b00100_100, SLA(Reg8(H)));
+    assert_decode_callback!(0b00100_101, SLA(Reg8(L)));
+    assert_decode_callback!(0b00100_110, SLA(PtrHL));
+    assert_decode_callback!(0b00100_111, SLA(Reg8(A)));
+  }
+
+  #[test]
+  fn sra_d() {
+    assert_decode_callback!(0b00101_000, SRA(Reg8(B)));
+    assert_decode_callback!(0b00101_001, SRA(Reg8(C)));
+    assert_decode_callback!(0b00101_010, SRA(Reg8(D)));
+    assert_decode_callback!(0b00101_011, SRA(Reg8(E)));
+    assert_decode_callback!(0b00101_100, SRA(Reg8(H)));
+    assert_decode_callback!(0b00101_101, SRA(Reg8(L)));
+    assert_decode_callback!(0b00101_110, SRA(PtrHL));
+    assert_decode_callback!(0b00101_111, SRA(Reg8(A)));
+  }
+
+  #[test]
+  fn swap_d() {
+    assert_decode_callback!(0b00110_000, SWAP(Reg8(B)));
+    assert_decode_callback!(0b00110_001, SWAP(Reg8(C)));
+    assert_decode_callback!(0b00110_010, SWAP(Reg8(D)));
+    assert_decode_callback!(0b00110_011, SWAP(Reg8(E)));
+    assert_decode_callback!(0b00110_100, SWAP(Reg8(H)));
+    assert_decode_callback!(0b00110_101, SWAP(Reg8(L)));
+    assert_decode_callback!(0b00110_110, SWAP(PtrHL));
+    assert_decode_callback!(0b00110_111, SWAP(Reg8(A)));
+  }
+
+  #[test]
+  fn bit_n_d() {
+    assert_decode_callback!(0b01000_000, BIT(0, Reg8(B)));
+    assert_decode_callback!(0b01000_001, BIT(0, Reg8(C)));
+    assert_decode_callback!(0b01000_010, BIT(0, Reg8(D)));
+    assert_decode_callback!(0b01000_011, BIT(0, Reg8(E)));
+    assert_decode_callback!(0b01000_100, BIT(0, Reg8(H)));
+    assert_decode_callback!(0b01000_101, BIT(0, Reg8(L)));
+    assert_decode_callback!(0b01000_110, BIT(0, PtrHL));
+    assert_decode_callback!(0b01000_111, BIT(0, Reg8(A)));
+
+    assert_decode_callback!(0b01001_000, BIT(1, Reg8(B)));
+    assert_decode_callback!(0b01010_000, BIT(2, Reg8(B)));
+    assert_decode_callback!(0b01011_000, BIT(3, Reg8(B)));
+    assert_decode_callback!(0b01100_000, BIT(4, Reg8(B)));
+    assert_decode_callback!(0b01101_000, BIT(5, Reg8(B)));
+    assert_decode_callback!(0b01110_000, BIT(6, Reg8(B)));
+    assert_decode_callback!(0b01111_000, BIT(7, Reg8(B)));
+  }
+
+  #[test]
+  fn res_n_d() {
+    assert_decode_callback!(0b10000_000, RES(0, Reg8(B)));
+    assert_decode_callback!(0b10000_001, RES(0, Reg8(C)));
+    assert_decode_callback!(0b10000_010, RES(0, Reg8(D)));
+    assert_decode_callback!(0b10000_011, RES(0, Reg8(E)));
+    assert_decode_callback!(0b10000_100, RES(0, Reg8(H)));
+    assert_decode_callback!(0b10000_101, RES(0, Reg8(L)));
+    assert_decode_callback!(0b10000_110, RES(0, PtrHL));
+    assert_decode_callback!(0b10000_111, RES(0, Reg8(A)));
+
+    assert_decode_callback!(0b10001_000, RES(1, Reg8(B)));
+    assert_decode_callback!(0b10010_000, RES(2, Reg8(B)));
+    assert_decode_callback!(0b10011_000, RES(3, Reg8(B)));
+    assert_decode_callback!(0b10100_000, RES(4, Reg8(B)));
+    assert_decode_callback!(0b10101_000, RES(5, Reg8(B)));
+    assert_decode_callback!(0b10110_000, RES(6, Reg8(B)));
+    assert_decode_callback!(0b10111_000, RES(7, Reg8(B)));
+  }
+
+  #[test]
+  fn set_n_d() {
+    assert_decode_callback!(0b11000_000, SET(0, Reg8(B)));
+    assert_decode_callback!(0b11000_001, SET(0, Reg8(C)));
+    assert_decode_callback!(0b11000_010, SET(0, Reg8(D)));
+    assert_decode_callback!(0b11000_011, SET(0, Reg8(E)));
+    assert_decode_callback!(0b11000_100, SET(0, Reg8(H)));
+    assert_decode_callback!(0b11000_101, SET(0, Reg8(L)));
+    assert_decode_callback!(0b11000_110, SET(0, PtrHL));
+    assert_decode_callback!(0b11000_111, SET(0, Reg8(A)));
+
+    assert_decode_callback!(0b11001_000, SET(1, Reg8(B)));
+    assert_decode_callback!(0b11010_000, SET(2, Reg8(B)));
+    assert_decode_callback!(0b11011_000, SET(3, Reg8(B)));
+    assert_decode_callback!(0b11100_000, SET(4, Reg8(B)));
+    assert_decode_callback!(0b11101_000, SET(5, Reg8(B)));
+    assert_decode_callback!(0b11110_000, SET(6, Reg8(B)));
+    assert_decode_callback!(0b11111_000, SET(7, Reg8(B)));
   }
 }

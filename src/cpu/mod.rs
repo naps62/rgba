@@ -2,7 +2,7 @@ pub mod opcodes;
 pub mod registers;
 
 use super::mmu::MMU;
-use opcodes::Opcode;
+use opcodes::{ExtendedOpcode, Opcode};
 use registers::{Flag, Register16, Register8, Registers};
 
 use Flag::*;
@@ -644,349 +644,146 @@ impl CPU {
         pc + 1
       }
 
-      CALLBACK => self.exec_cb(self.read_arg8(mmu), pc, mmu),
+      CALLBACK => {
+        let extended_opcode = opcodes::decode_extended(self.read_arg8(mmu));
+        self.exec_cb(extended_opcode, pc, mmu);
 
-      _ => panic!("Unexpected opcode: {:?}", opcode),
+        pc + 1
+      }
+
+      _ => unreachable!("Unexpected opcode: {:?}", opcode),
     }
   }
 
-  fn exec_cb(&mut self, opcode: u8, pc: u16, mmu: &mut MMU) -> u16 {
-    println!("exec_cb {:#2x}", opcode);
-    match ((), opcode) {
-      // RLC D
-      (_, 0b0000_0000) => {
-        let v = self.alu_rlc(self.regs.b());
-        self.regs.set_b(v);
+  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, pc: u16, mmu: &mut MMU) -> u16 {
+    use opcodes::{Arg::*, ExtendedOpcode::*};
+
+    match decoded_opcode {
+      RLC(Reg8(reg8)) => {
+        let v = self.alu_rlc(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
-      (_, 0b0000_0001) => {
-        let v = self.alu_rlc(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0000_0010) => {
-        let v = self.alu_rlc(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0000_0011) => {
-        let v = self.alu_rlc(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0000_0100) => {
-        let v = self.alu_rlc(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0000_0101) => {
-        let v = self.alu_rlc(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0000_0110) => {
+
+      RLC(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rlc(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0000_0111) => {
-        let v = self.alu_rlc(self.regs.a());
-        self.regs.set_a(v);
+
+      RRC(Reg8(reg8)) => {
+        let v = self.alu_rrc(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // RRC D
-      (_, 0b0000_1000) => {
-        let v = self.alu_rrc(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0000_1001) => {
-        let v = self.alu_rrc(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0000_1010) => {
-        let v = self.alu_rrc(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0000_1011) => {
-        let v = self.alu_rrc(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0000_1100) => {
-        let v = self.alu_rrc(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0000_1101) => {
-        let v = self.alu_rrc(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0000_1110) => {
+      RRC(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rrc(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0000_1111) => {
-        let v = self.alu_rrc(self.regs.a());
-        self.regs.set_a(v);
+
+      RL(Reg8(reg8)) => {
+        let v = self.alu_rl(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // RL D
-      (_, 0b0001_0000) => {
-        let v = self.alu_rl(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0001_0001) => {
-        let v = self.alu_rl(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0001_0010) => {
-        let v = self.alu_rl(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0001_0011) => {
-        let v = self.alu_rl(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0001_0100) => {
-        let v = self.alu_rl(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0001_0101) => {
-        let v = self.alu_rl(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0001_0110) => {
+      RL(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rl(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0001_0111) => {
-        let v = self.alu_rl(self.regs.a());
-        self.regs.set_a(v);
+
+      RR(Reg8(reg8)) => {
+        let v = self.alu_rr(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // RR D
-      (_, 0b0001_1000) => {
-        let v = self.alu_rr(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0001_1001) => {
-        let v = self.alu_rr(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0001_1010) => {
-        let v = self.alu_rr(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0001_1011) => {
-        let v = self.alu_rr(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0001_1100) => {
-        let v = self.alu_rr(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0001_1101) => {
-        let v = self.alu_rr(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0001_1110) => {
+      RR(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_rr(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0001_1111) => {
-        let v = self.alu_rr(self.regs.a());
-        self.regs.set_a(v);
+
+      SLA(Reg8(reg8)) => {
+        let v = self.alu_sla(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // SLA D
-      (_, 0b0010_0000) => {
-        let v = self.alu_sla(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0010_0001) => {
-        let v = self.alu_sla(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0010_0010) => {
-        let v = self.alu_sla(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0010_0011) => {
-        let v = self.alu_sla(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0010_0100) => {
-        let v = self.alu_sla(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0010_0101) => {
-        let v = self.alu_sla(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0010_0110) => {
+      SLA(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_sla(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0010_0111) => {
-        let v = self.alu_sla(self.regs.a());
-        self.regs.set_a(v);
+
+      SRA(Reg8(reg8)) => {
+        let v = self.alu_sra(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // SRA D
-      (_, 0b0010_1000) => {
-        let v = self.alu_sra(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0010_1001) => {
-        let v = self.alu_sra(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0010_1010) => {
-        let v = self.alu_sra(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0010_1011) => {
-        let v = self.alu_sra(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0010_1100) => {
-        let v = self.alu_sra(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0010_1101) => {
-        let v = self.alu_sra(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0010_1110) => {
+      SRA(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_sra(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0010_1111) => {
-        let v = self.alu_sra(self.regs.a());
-        self.regs.set_a(v);
+
+      SWAP(Reg8(reg8)) => {
+        let v = self.alu_swap(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // SWAP D
-      (_, 0b0011_0000) => {
-        let v = self.alu_swap(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0011_0001) => {
-        let v = self.alu_swap(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0011_0010) => {
-        let v = self.alu_swap(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0011_0011) => {
-        let v = self.alu_swap(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0011_0100) => {
-        let v = self.alu_swap(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0011_0101) => {
-        let v = self.alu_swap(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0011_0110) => {
+      SWAP(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_swap(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0011_0111) => {
-        let v = self.alu_swap(self.regs.a());
-        self.regs.set_a(v);
+
+      SRL(Reg8(reg8)) => {
+        let v = self.alu_srl(self.regs.read8(reg8));
+        self.regs.write8(reg8, v);
       }
 
-      // SRL D
-      (_, 0b0011_1000) => {
-        let v = self.alu_srl(self.regs.b());
-        self.regs.set_b(v);
-      }
-      (_, 0b0011_1001) => {
-        let v = self.alu_srl(self.regs.c());
-        self.regs.set_c(v);
-      }
-      (_, 0b0011_1010) => {
-        let v = self.alu_srl(self.regs.d());
-        self.regs.set_d(v);
-      }
-      (_, 0b0011_1011) => {
-        let v = self.alu_srl(self.regs.e());
-        self.regs.set_e(v);
-      }
-      (_, 0b0011_1100) => {
-        let v = self.alu_srl(self.regs.h());
-        self.regs.set_h(v);
-      }
-      (_, 0b0011_1101) => {
-        let v = self.alu_srl(self.regs.l());
-        self.regs.set_l(v);
-      }
-      (_, 0b0011_1110) => {
+      SRL(PtrHL) => {
         let ptr = self.regs.hl() as usize;
         let v = self.alu_srl(mmu.read8(ptr));
         mmu.write8(ptr, v);
       }
-      (_, 0b0011_1111) => {
-        let v = self.alu_srl(self.regs.a());
-        self.regs.set_a(v);
+
+      BIT(n, Reg8(reg8)) => {
+        let v = self.regs.read8(reg8);
+
+        self.alu_bit(n, v);
       }
 
-      // BIT N, (HL)
-      _ if opcode_match(opcode, 0b1100_0111, 0b0100_0110) => {
-        let n = self.cb_alu_n(opcode);
+      BIT(n, PtrHL) => {
         let v = mmu.read8(self.regs.hl() as usize);
 
         self.alu_bit(n, v);
       }
 
-      // BIT N, D
-      _ if opcode_match(opcode, 0b1100_0000, 0b0100_0000) => {
-        let n = self.cb_alu_n(opcode);
-        let reg = self.cb_alu_reg(opcode);
-        let v = self.regs.read8(reg);
-
-        self.alu_bit(n, v);
-      }
-
-      // RES N, (HL)
-      _ if opcode_match(opcode, 0b1100_0111, 0b1000_0110) => {
-        let n = self.cb_alu_n(opcode);
+      RES(n, PtrHL) => {
         let v = mmu.read8(self.regs.hl() as usize);
 
         mmu.write8(self.regs.hl() as usize, v & !(1 << n));
       }
 
-      // RES N, D
-      _ if opcode_match(opcode, 0b1100_0000, 0b1000_0000) => {
-        let n = self.cb_alu_n(opcode);
-        let reg = self.cb_alu_reg(opcode);
-        let v = self.regs.read8(reg);
+      RES(n, Reg8(reg8)) => {
+        let v = self.regs.read8(reg8);
 
-        self.regs.write8(reg, v & !(1 << n));
+        self.regs.write8(reg8, v & !(1 << n));
       }
 
-      // SET N, (HL)
-      _ if opcode_match(opcode, 0b1100_0111, 0b1100_0110) => {
-        let n = self.cb_alu_n(opcode);
+      SET(n, PtrHL) => {
         let v = mmu.read8(self.regs.hl() as usize);
 
         mmu.write8(self.regs.hl() as usize, v | (1 << n));
       }
 
-      // SET N, D
-      _ if opcode_match(opcode, 0b1100_0000, 0b1100_0000) => {
-        let n = self.cb_alu_n(opcode);
-        let reg = self.cb_alu_reg(opcode);
-        let v = self.regs.read8(reg);
+      SET(n, Reg8(reg8)) => {
+        let v = self.regs.read8(reg8);
 
-        self.regs.write8(reg, v | (1 << n));
+        self.regs.write8(reg8, v | (1 << n));
       }
 
-      _ => {
-        self.i_unknown(opcode);
-      }
+      opcode => unreachable!("Unknown extended opcode #{:?}", opcode),
     };
 
     pc + 2
@@ -1171,13 +968,6 @@ impl CPU {
     v
   }
 
-  fn i_unknown(&self, opcode: u8) -> u16 {
-    panic!(
-      "Failed to execute unknown opcode: 0x{:02x} (0b{0:b})",
-      opcode
-    );
-  }
-
   fn read_arg8(&self, mmu: &MMU) -> u8 {
     let pc = self.regs.read16(PC);
 
@@ -1204,28 +994,6 @@ impl CPU {
 
     ((n1 & mask) + (n2 & mask) & index_mask) == index_mask
   }
-
-  fn cb_alu_reg(&self, reg: u8) -> Register8 {
-    match reg & 0x07 {
-      0x0 => B,
-      0x1 => C,
-      0x2 => D,
-      0x3 => E,
-      0x4 => H,
-      0x5 => L,
-      0x7 => A,
-
-      _ => panic!("Unkonwn alu_val register code: 0x{:x}", reg),
-    }
-  }
-
-  fn cb_alu_n(&self, reg: u8) -> u8 {
-    (reg & 0b0011_1000) >> 3
-  }
-}
-
-fn opcode_match(opcode: u8, mask: u8, expectation: u8) -> bool {
-  opcode & mask == expectation
 }
 
 #[cfg(test)]
@@ -1271,7 +1039,7 @@ mod tests {
 
   #[test]
   fn new_cpu() {
-    let (cpu, mmu) = new_test_cpu();
+    let (cpu, _mmu) = new_test_cpu();
 
     assert_eq!(cpu.regs.read16(Register16::BC), 0);
   }

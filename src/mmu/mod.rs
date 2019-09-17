@@ -228,7 +228,7 @@ mod tests {
 
   #[test]
   fn read8_readable() {
-    let mut mmu = instantiate_mmu!();
+    let mmu = instantiate_mmu!();
 
     assert_eq!(mmu.read8(ROM0_BEG), 0);
     assert_eq!(mmu.read8(ROM0_END), 0);
