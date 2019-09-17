@@ -2,7 +2,7 @@ pub mod opcodes;
 pub mod registers;
 
 use super::mmu::MMU;
-use opcodes::{AluOp, ExtendedOpcode, Opcode};
+use opcodes::{AluOp, ExtendedOpcode, JumpCondition, Opcode};
 use registers::{Flag, Register16, Register8, Registers};
 
 use Flag::*;
@@ -136,30 +136,8 @@ impl CPU {
 
       STOP => panic!("not done yet"),
 
-      JUMP(Always, Imm8) => {
-        self.jump_to = Some(pc + self.read_arg8(mmu) as u16);
-      }
-
-      JUMP(NotZero, Imm8) => {
-        if !self.regs.get_flag(ZF) {
-          self.jump_to = Some(pc + self.read_arg8(mmu) as u16);
-        }
-      }
-
-      JUMP(Zero, Imm8) => {
-        if self.regs.get_flag(ZF) {
-          Some(pc + self.read_arg8(mmu) as u16);
-        }
-      }
-
-      JUMP(NotCarry, Imm8) => {
-        if !self.regs.get_flag(CF) {
-          self.jump_to = Some(pc + self.read_arg8(mmu) as u16);
-        }
-      }
-
-      JUMP(Carry, Imm8) => {
-        if self.regs.get_flag(CF) {
+      JUMP(condition, Imm8) => {
+        if self.check_jump_condition(condition) {
           self.jump_to = Some(pc + self.read_arg8(mmu) as u16);
         }
       }
@@ -281,32 +259,10 @@ impl CPU {
         self.jump_to = Some(self.pop(mmu));
       }
 
-      JUMP(NotZero, Addr16) => {
-        if !self.regs.get_flag(ZF) {
+      JUMP(condition, Addr16) => {
+        if self.check_jump_condition(condition) {
           self.jump_to = Some(self.read_arg16(mmu));
         }
-      }
-
-      JUMP(Zero, Addr16) => {
-        if self.regs.get_flag(ZF) {
-          self.jump_to = Some(self.read_arg16(mmu));
-        }
-      }
-
-      JUMP(NotCarry, Addr16) => {
-        if !self.regs.get_flag(CF) {
-          self.jump_to = Some(self.read_arg16(mmu));
-        }
-      }
-
-      JUMP(Carry, Addr16) => {
-        if self.regs.get_flag(CF) {
-          self.jump_to = Some(self.read_arg16(mmu));
-        }
-      }
-
-      JUMP(Always, Addr16) => {
-        Some(self.read_arg16(mmu));
       }
 
       CALL(NotZero, Addr16) => {
@@ -644,6 +600,18 @@ impl CPU {
         self.regs.set_flag(NF, true);
         self.regs.set_flag(CF, (a as u16) < (d as u16));
       }
+    }
+  }
+
+  fn check_jump_condition(&self, condition: JumpCondition) -> bool {
+    use JumpCondition::*;
+
+    match condition {
+      Always => true,
+      NotZero => !self.regs.get_flag(ZF),
+      Zero => self.regs.get_flag(ZF),
+      NotCarry => !self.regs.get_flag(CF),
+      Carry => self.regs.get_flag(CF),
     }
   }
 
