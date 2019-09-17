@@ -1011,33 +1011,36 @@ impl CPU {
 mod tests {
   use super::super::gpu;
   use super::*;
+  use opcodes::{ExtendedOpcode::*, JumpCondition::*};
 
   macro_rules! exec {
-    ($cpu:expr, $mmu:expr, $instr:expr) => {{
-      let pc = $cpu.regs.pc() as usize;
-      $mmu._load8(pc, $instr);
-      $cpu.exec(&mut $mmu);
+    ($cpu:expr, $mmu:expr, $opcode:expr) => {{
+      let pc = $cpu.regs.pc();
+      $mmu._load8(pc as usize, 0x0);
+      $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
 
-    ($cpu:expr, $mmu:expr,$instr:expr, arg8 => $arg8:expr) => {{
-      let pc = $cpu.regs.pc() as usize;
-      $mmu._load8(pc, $instr);
-      $mmu._load8(pc + 1, $arg8);
-      $cpu.exec(&mut $mmu);
+    ($cpu:expr, $mmu:expr,$opcode:expr, arg8 => $arg8:expr) => {{
+      let pc = $cpu.regs.pc();
+      $mmu._load8(pc as usize, 0x0);
+      $mmu._load8((pc + 1) as usize, $arg8);
+      $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
 
-    ($cpu:expr,$mmu:expr, $instr:expr, arg16 => $arg16:expr) => {{
-      let pc = $cpu.regs.pc() as usize;
-      $mmu._load8(pc, $instr);
-      $mmu._load16(pc + 1, $arg16);
-      $cpu.exec(&mut $mmu);
+    ($cpu:expr,$mmu:expr, $opcode:expr, arg16 => $arg16:expr) => {{
+      let pc = $cpu.regs.pc();
+      $mmu._load8(pc as usize, 0x0);
+      $mmu._load16((pc + 1) as usize, $arg16);
+      $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
   }
 
   macro_rules! exec_cb {
-    ($cpu:expr, $mmu:expr,$instr:expr) => {
-      exec!($cpu, $mmu, 0xCB, arg8 => $instr)
-    };
+    ($cpu:expr, $mmu:expr, $opcode:expr) => {{
+      let pc = $cpu.regs.pc();
+      $mmu._load8(pc as usize, 0x0);
+      $cpu.exec_cb($opcode, pc, &mut $mmu)
+    }};
   }
 
   fn new_test_cpu() -> (CPU, MMU) {
@@ -1047,6 +1050,8 @@ mod tests {
     let gpu = Rc::new(RefCell::new(gpu::GPU::new()));
     (CPU::new(), MMU::new(false, gpu, vec![0; 1024 * 10]))
   }
+
+  use opcodes::{AluOp::*, Arg::*, Opcode::*};
 
   #[test]
   fn new_cpu() {
@@ -1059,9 +1064,7 @@ mod tests {
   fn opcode_nop() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0b0000_0000);
-
-    assert_eq!(cpu.regs.read16(Register16::PC), 1);
+    exec!(cpu, mmu, NOP);
   }
 
   #[test]
@@ -1069,7 +1072,7 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_sp(2047);
 
-    exec!(cpu, mmu, 0b0000_1000, arg16 => 0xff90);
+    exec!(cpu, mmu, LD(Addr16, Reg16(SP)), arg16 => 0xff90);
 
     assert_eq!(mmu.read16(0xff90), 2047);
   }
@@ -1078,43 +1081,19 @@ mod tests {
   fn opcode_ld_r16_n16() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0x01, arg16 => 511);
-    exec!(cpu, mmu, 0x11, arg16 => 1023);
-    exec!(cpu, mmu, 0x21, arg16 => 2047);
-    exec!(cpu, mmu, 0x31, arg16 => 4095);
+    exec!(cpu, mmu, LD(Reg16(BC), Imm16), arg16 => 511);
 
     assert_eq!(cpu.regs.read16(BC), 511);
-    assert_eq!(cpu.regs.read16(DE), 1023);
-    assert_eq!(cpu.regs.read16(HL), 2047);
-    assert_eq!(cpu.regs.read16(SP), 4095);
   }
 
   #[test]
   fn opcode_add_hl_r16() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    // ADD HL, BC
     cpu.regs.write16(HL, 128);
     cpu.regs.write16(BC, 127);
-    exec!(cpu, mmu, 0x09);
+    exec!(cpu, mmu, ADD(Reg16(HL), Reg16(BC)));
     assert_eq!(cpu.regs.read16(HL), 255);
-
-    // ADD HL, DE
-    cpu.regs.write16(HL, 256);
-    cpu.regs.write16(DE, 255);
-    exec!(cpu, mmu, 0x19);
-    assert_eq!(cpu.regs.read16(HL), 511);
-
-    // ADD HL, HL
-    cpu.regs.write16(HL, 511);
-    exec!(cpu, mmu, 0x29);
-    assert_eq!(cpu.regs.read16(HL), 1022);
-
-    // ADD HL, SP
-    cpu.regs.write16(HL, 1024);
-    cpu.regs.write16(SP, 1023);
-    exec!(cpu, mmu, 0x39);
-    assert_eq!(cpu.regs.read16(HL), 2047);
   }
 
   #[test]
@@ -1124,7 +1103,7 @@ mod tests {
     // carry from bit 11
     cpu.regs.write16(HL, 0b0000_1000_0000_0000);
     cpu.regs.write16(BC, 0b0000_1000_0000_0000);
-    exec!(cpu, mmu, 0x09);
+    exec!(cpu, mmu, ADD(Reg16(HL), Reg16(BC)));
 
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), true);
@@ -1133,7 +1112,7 @@ mod tests {
     // carry from bit 15
     cpu.regs.write16(HL, 0b1000_0000_0000_0000);
     cpu.regs.write16(BC, 0b1000_0000_0000_0000);
-    exec!(cpu, mmu, 0x09);
+    exec!(cpu, mmu, ADD(Reg16(HL), Reg16(BC)));
 
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), false);
@@ -1142,7 +1121,7 @@ mod tests {
     // carry from bit 11 and 15
     cpu.regs.write16(HL, 0b1000_1000_0000_0000);
     cpu.regs.write16(BC, 0b1000_1000_0000_0000);
-    exec!(cpu, mmu, 0x09);
+    exec!(cpu, mmu, ADD(Reg16(HL), Reg16(BC)));
 
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), true);
@@ -1151,7 +1130,7 @@ mod tests {
     // carry from bit 11 and 15 indirectly
     cpu.regs.write16(HL, 0b1100_0100_0000_0000);
     cpu.regs.write16(BC, 0b0100_1100_0000_0000);
-    exec!(cpu, mmu, 0x09);
+    exec!(cpu, mmu, ADD(Reg16(HL), Reg16(BC)));
 
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), true);
@@ -1161,128 +1140,51 @@ mod tests {
   #[test]
   fn opcode_ld_r16_a() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // LD BC, A
     cpu.regs.write8(A, 127);
     cpu.regs.write16(BC, 0xff90);
-    exec!(cpu, mmu, 0x02);
-    assert_eq!(mmu.read8(0xff90), 127);
 
-    // LD DE, A
-    cpu.regs.write8(A, 63);
-    cpu.regs.write16(DE, 0xff90);
-    exec!(cpu, mmu, 0x12);
-    assert_eq!(mmu.read8(0xff90), 63);
+    exec!(cpu, mmu, LD(Reg16(BC), Reg8(A)));
+
+    assert_eq!(mmu.read8(0xff90), 127);
   }
 
   #[test]
   fn opcode_ld_a_r16() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    // LD BC, A
     mmu.write8(0xff90, 127);
     cpu.regs.write16(BC, 0xff90);
-    exec!(cpu, mmu, 0x0a);
+    exec!(cpu, mmu, LD(Reg8(A), Reg16(BC)));
     assert_eq!(cpu.regs.read8(A), 127);
-
-    // LD DE, A
-    mmu.write8(0xff90, 63);
-    cpu.regs.write16(DE, 0xff90);
-    exec!(cpu, mmu, 0x1a);
-    assert_eq!(cpu.regs.read8(A), 63);
   }
 
   #[test]
   fn opcode_inc_r16() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // INC BC
     cpu.regs.write16(BC, 257);
-    exec!(cpu, mmu, 0x03);
+    exec!(cpu, mmu, INC(Reg16(BC)));
+
     assert_eq!(cpu.regs.read16(BC), 258);
-
-    // INC DE
-    cpu.regs.write16(DE, 511);
-    exec!(cpu, mmu, 0x13);
-    assert_eq!(cpu.regs.read16(DE), 512);
-
-    // INC HL
-    cpu.regs.write16(HL, 1023);
-    exec!(cpu, mmu, 0x23);
-    assert_eq!(cpu.regs.read16(HL), 1024);
-
-    // INC SP
-    cpu.regs.write16(SP, 2047);
-    exec!(cpu, mmu, 0x33);
-    assert_eq!(cpu.regs.read16(SP), 2048);
   }
 
   #[test]
   fn opcode_dec_r16() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // INC BC
-    cpu.regs.write16(BC, 257);
-    exec!(cpu, mmu, 0x0b);
-    assert_eq!(cpu.regs.read16(BC), 256);
-
-    // INC DE
-    cpu.regs.write16(DE, 511);
-    exec!(cpu, mmu, 0x1b);
-    assert_eq!(cpu.regs.read16(DE), 510);
-
-    // INC HL
     cpu.regs.write16(HL, 1023);
-    exec!(cpu, mmu, 0x2b);
-    assert_eq!(cpu.regs.read16(HL), 1022);
 
-    // INC SP
-    cpu.regs.write16(SP, 2047);
-    exec!(cpu, mmu, 0x3b);
-    assert_eq!(cpu.regs.read16(SP), 2046);
+    exec!(cpu, mmu, DEC(Reg16(HL)));
+
+    assert_eq!(cpu.regs.read16(HL), 1022);
   }
 
   #[test]
   fn opcode_inc_r8() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // INC B
     cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0x04);
+
+    exec!(cpu, mmu, INC(Reg8(B)));
+
     assert_eq!(cpu.regs.read8(B), 2);
-
-    // INC C
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0x0c);
-    assert_eq!(cpu.regs.read8(C), 3);
-
-    // INC D
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0x14);
-    assert_eq!(cpu.regs.read8(D), 4);
-    // INC E
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0x1c);
-    assert_eq!(cpu.regs.read8(E), 5);
-    // INC H
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0x24);
-    assert_eq!(cpu.regs.read8(H), 6);
-    // INC L
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0x2c);
-    assert_eq!(cpu.regs.read8(L), 7);
-
-    // INC (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 7);
-    exec!(cpu, mmu, 0x34);
-    assert_eq!(mmu.read8(0xff90), 8);
-
-    // INC A
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0x3c);
-    assert_eq!(cpu.regs.read8(A), 9);
   }
 
   #[test]
@@ -1291,74 +1193,49 @@ mod tests {
 
     // NF is set to false
     cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0x3c);
+    exec!(cpu, mmu, INC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(NF), false);
 
     // ZF is set to true if result is 0
     cpu.regs.set_a(0xFF);
-    exec!(cpu, mmu, 0x3c);
+    exec!(cpu, mmu, INC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // ZF is set to false if result is not 0
     cpu.regs.set_a(0xFE);
-    exec!(cpu, mmu, 0x3c);
+    exec!(cpu, mmu, INC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
 
     // HF is set to true if overflows from bit 3
     cpu.regs.set_a(0b0000_1111);
-    exec!(cpu, mmu, 0x3c);
+    exec!(cpu, mmu, INC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // HF is set to false if does not overflow from bit 3
     cpu.regs.set_a(0b0000_0111);
-    exec!(cpu, mmu, 0x3c);
+    exec!(cpu, mmu, INC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(HF), false);
   }
 
   #[test]
   fn opcode_dec_r8() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // DEC B
     cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0x05);
+
+    exec!(cpu, mmu, DEC(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0);
+  }
 
-    // DEC C
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0x0d);
-    assert_eq!(cpu.regs.c(), 1);
-
-    // DEC D
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0x15);
-    assert_eq!(cpu.regs.d(), 2);
-
-    // DEC E
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0x1d);
-    assert_eq!(cpu.regs.e(), 3);
-
-    // DEC H
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0x25);
-    assert_eq!(cpu.regs.h(), 4);
-
-    // DEC L
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0x2d);
-    assert_eq!(cpu.regs.l(), 5);
-
-    // DEC (HL)
+  #[test]
+  fn opcode_dec_ptr_hl() {
+    let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(0xff90);
     mmu.write8(0xff90, 7);
-    exec!(cpu, mmu, 0x35);
-    assert_eq!(mmu.read8(0xff90), 6);
 
-    // DEC A
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0x3d);
-    assert_eq!(cpu.regs.a(), 7);
+    exec!(cpu, mmu, DEC(PtrReg16(HL)));
+
+    assert_eq!(mmu.read8(0xff90), 6);
   }
 
   #[test]
@@ -1367,27 +1244,27 @@ mod tests {
 
     // NF is set to true
     cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0x3d);
+    exec!(cpu, mmu, DEC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(NF), true);
 
     // ZF is set to true if result is 0
     cpu.regs.set_a(0x01);
-    exec!(cpu, mmu, 0x3d);
+    exec!(cpu, mmu, DEC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // ZF is set to false if result is not 0
     cpu.regs.set_a(0x02);
-    exec!(cpu, mmu, 0x3d);
+    exec!(cpu, mmu, DEC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
 
     // HF is set to true if overflows from bit 3
     cpu.regs.set_a(0b0000_0000);
-    exec!(cpu, mmu, 0x3d);
+    exec!(cpu, mmu, DEC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // HF is set to false if does not overflow from bit 3
     cpu.regs.set_a(0b0000_1000);
-    exec!(cpu, mmu, 0x3d);
+    exec!(cpu, mmu, DEC(Reg8(A)));
     assert_eq!(cpu.regs.get_flag(HF), false);
   }
 
@@ -1395,137 +1272,162 @@ mod tests {
   fn opcode_ld_r8_n8() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    // LD B, 1
-    exec!(cpu, mmu, 0b00_000_110, arg8 => 1);
+    exec!(cpu, mmu, LD(Reg8(B), Imm8), arg8 => 1);
+
     assert_eq!(cpu.regs.read8(B), 1);
-
-    // LD C, 2
-    exec!(cpu, mmu, 0b00_001_110, arg8 => 2);
-    assert_eq!(cpu.regs.read8(C), 2);
-
-    // LD D, 3
-    exec!(cpu, mmu, 0b00_010_110, arg8 => 3);
-    assert_eq!(cpu.regs.read8(D), 3);
-
-    // LD E, 4
-    exec!(cpu, mmu, 0b00_011_110, arg8 => 4);
-    assert_eq!(cpu.regs.read8(E), 4);
-
-    // LD H, 5
-    exec!(cpu, mmu, 0b00_100_110, arg8 => 5);
-    assert_eq!(cpu.regs.read8(H), 5);
-
-    // LD L, 6
-    exec!(cpu, mmu, 0b00_101_110, arg8 => 6);
-    assert_eq!(cpu.regs.read8(L), 6);
-
-    // LD (HL), 7
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b00_110_110, arg8 => 7);
-    assert_eq!(mmu.read16(0xff90), 7);
-
-    // LD A, 8
-    exec!(cpu, mmu, 0b00_111_110, arg8 => 8);
-    assert_eq!(cpu.regs.read8(A), 8);
   }
 
   #[test]
-  fn opcode_rdca() {
+  fn opcode_rlca() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // RLCA
     cpu.regs.set_a(0b0000_0010);
-    exec!(cpu, mmu, 0b0000_0111);
+
+    exec!(cpu, mmu, RLCA);
+
     assert_eq!(cpu.regs.a(), 0b0000_0100);
-
-    // RRCA
-    cpu.regs.set_a(0b0000_0010);
-    exec!(cpu, mmu, 0b0000_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0001);
   }
 
   #[test]
-  fn opcode_rdca_flags() {
+  fn opcode_rlca_flags() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
     // ZH, HF and NF flags set to false
     cpu.regs.set_a(0b0000_0010);
-    exec!(cpu, mmu, 0b0000_0111);
+    exec!(cpu, mmu, RLCA);
     assert_eq!(cpu.regs.get_flag(HF), false);
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(ZF), false);
 
     // CF flag set to false if carry not used
     cpu.regs.set_a(0b0000_0010);
-    exec!(cpu, mmu, 0b0000_0111);
+    exec!(cpu, mmu, RLCA);
     assert_eq!(cpu.regs.get_flag(CF), false);
 
     // CF flag set to false if carry used
     cpu.regs.set_a(0b1000_0000);
-    exec!(cpu, mmu, 0b0000_0111);
+    exec!(cpu, mmu, RLCA);
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
-  fn opcode_rda() {
+  fn opcode_rrca() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+    cpu.regs.set_a(0b0000_0010);
+
+    exec!(cpu, mmu, RRCA);
+
+    assert_eq!(cpu.regs.a(), 0b0000_0001);
+  }
+
+  #[test]
+  fn opcode_rrca_flags() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+
+    // ZH, HF and NF flags set to false
+    cpu.regs.set_a(0b0000_0010);
+    exec!(cpu, mmu, RRCA);
+    assert_eq!(cpu.regs.get_flag(HF), false);
+    assert_eq!(cpu.regs.get_flag(NF), false);
+    assert_eq!(cpu.regs.get_flag(ZF), false);
+
+    // CF flag set to false if carry not used
+    cpu.regs.set_a(0b0000_0010);
+    exec!(cpu, mmu, RRCA);
+    assert_eq!(cpu.regs.get_flag(CF), false);
+
+    // CF flag set to false if carry used
+    cpu.regs.set_a(0b0000_0001);
+    exec!(cpu, mmu, RRCA);
+    assert_eq!(cpu.regs.get_flag(CF), true);
+  }
+
+  #[test]
+  fn opcode_rla() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
     // RLA
     cpu.regs.set_a(0b0000_0010);
     cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b0001_0111);
+    exec!(cpu, mmu, RLA);
     assert_eq!(cpu.regs.a(), 0b0000_0100);
 
     // RLA without carry flag
     cpu.regs.set_a(0b1000_0000);
     cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b0001_0111);
+    exec!(cpu, mmu, RLA);
     assert_eq!(cpu.regs.a(), 0b0000_0000);
 
     // RLA with carry flag
     cpu.regs.set_a(0b1000_0000);
     cpu.regs.set_flag(CF, true);
-    exec!(cpu, mmu, 0b0001_0111);
+    exec!(cpu, mmu, RLA);
     assert_eq!(cpu.regs.a(), 0b0000_0001);
-
-    // RRA
-    cpu.regs.set_a(0b0000_0010);
-    cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b0001_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0001);
-
-    // RRA without carry flag
-    cpu.regs.set_a(0b0000_0001);
-    cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b0001_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0000);
-
-    // RRA with carry flag
-    cpu.regs.set_a(0b0000_0001);
-    cpu.regs.set_flag(CF, true);
-    exec!(cpu, mmu, 0b0001_1111);
-    assert_eq!(cpu.regs.a(), 0b1000_0000);
   }
 
   #[test]
-  fn opcode_rda_flags() {
+  fn opcode_rla_flags() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
     // ZH, HF and NF flags set to false
     cpu.regs.set_a(0b0000_0010);
-    exec!(cpu, mmu, 0b0001_0111);
+    exec!(cpu, mmu, RLA);
     assert_eq!(cpu.regs.get_flag(HF), false);
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(ZF), false);
 
     // CF flag set to false if carry not used
     cpu.regs.set_a(0b0000_0010);
-    exec!(cpu, mmu, 0b0001_0111);
+    exec!(cpu, mmu, RLA);
     assert_eq!(cpu.regs.get_flag(CF), false);
 
     // CF flag set to false if carry used
     cpu.regs.set_a(0b1000_0000);
-    exec!(cpu, mmu, 0b0001_0111);
+    exec!(cpu, mmu, RLA);
+    assert_eq!(cpu.regs.get_flag(CF), true);
+  }
+
+  #[test]
+  fn opcode_rra() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+
+    // RRA
+    cpu.regs.set_a(0b0000_0010);
+    cpu.regs.set_flag(CF, false);
+    exec!(cpu, mmu, RRA);
+    assert_eq!(cpu.regs.a(), 0b0000_0001);
+
+    // RRA without carry flag
+    cpu.regs.set_a(0b0000_0001);
+    cpu.regs.set_flag(CF, false);
+    exec!(cpu, mmu, RRA);
+    assert_eq!(cpu.regs.a(), 0b0000_0000);
+
+    // RRA with carry flag
+    cpu.regs.set_a(0b0000_0001);
+    cpu.regs.set_flag(CF, true);
+    exec!(cpu, mmu, RRA);
+    assert_eq!(cpu.regs.a(), 0b1000_0000);
+  }
+
+  #[test]
+  fn opcode_rra_flags() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+
+    // ZH, HF and NF flags set to false
+    cpu.regs.set_a(0b0000_0010);
+    exec!(cpu, mmu, RRA);
+    assert_eq!(cpu.regs.get_flag(HF), false);
+    assert_eq!(cpu.regs.get_flag(NF), false);
+    assert_eq!(cpu.regs.get_flag(ZF), false);
+
+    // CF flag set to false if carry not used
+    cpu.regs.set_a(0b0000_0010);
+    exec!(cpu, mmu, RRA);
+    assert_eq!(cpu.regs.get_flag(CF), false);
+
+    // CF flag set to false if carry used
+    cpu.regs.set_a(0b0000_0001);
+    exec!(cpu, mmu, RRA);
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
@@ -1533,9 +1435,9 @@ mod tests {
   fn opcode_jr_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    // new PC is incremented by N
-    exec!(cpu, mmu, 0b0001_1000, arg8 => 0b0000_0011);
-    assert_eq!(cpu.regs.pc(), 3);
+    let new_pc = exec!(cpu, mmu, JUMP(Always, Imm8), arg8 => 0b0000_0011);
+
+    assert_eq!(new_pc, 3);
   }
 
   #[test]
@@ -1545,59 +1447,24 @@ mod tests {
     // JR NZ, N increments by N if NZ
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
-    exec!(cpu, mmu, 0b0010_0000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 8);
+    let new_pc = exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
+    assert_eq!(new_pc, 8);
 
     // JR NZ, N increments by 2 if not NZ
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
-    exec!(cpu, mmu, 0b0010_0000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 2);
-
-    // JR Z, N increments by N if not Z
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(ZF, true);
-    exec!(cpu, mmu, 0b0010_1000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 8);
-
-    // JR Z, N increments by 2 if Z
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(ZF, false);
-    exec!(cpu, mmu, 0b0010_1000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 2);
-
-    // JR NC, N increments by N if NC
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b0011_0000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 8);
-
-    // JR NC, N increments by 2 if not NC
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, true);
-    exec!(cpu, mmu, 0b0011_0000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 2);
-
-    // JR C, N increments by 2 if not C
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b0011_1000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 2);
-
-    // JR C, N increments by N if C
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, true);
-    exec!(cpu, mmu, 0b0011_1000, arg8 => 0b0000_1000);
-    assert_eq!(cpu.regs.pc(), 8);
+    let new_pc = exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
+    assert_eq!(new_pc, 2);
   }
 
   #[test]
   fn opcode_ldi_hl_a() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(0xff90);
     cpu.regs.set_a(2);
-    exec!(cpu, mmu, 0b0010_0010);
+
+    exec!(cpu, mmu, LDI(PtrReg16(HL), Reg8(A)));
+
     assert_eq!(mmu.read8(0xff90), 2);
     assert_eq!(cpu.regs.hl(), 0xff91);
   }
@@ -1605,10 +1472,11 @@ mod tests {
   #[test]
   fn opcode_ldi_a_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(128);
     mmu._load8(128, 2);
-    exec!(cpu, mmu, 0b0010_1010);
+
+    exec!(cpu, mmu, LDI(Reg8(A), PtrReg16(HL)));
+
     assert_eq!(cpu.regs.a(), 2);
     assert_eq!(cpu.regs.hl(), 129);
   }
@@ -1616,10 +1484,11 @@ mod tests {
   #[test]
   fn opcode_ldd_hl_a() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(0xff90);
     cpu.regs.set_a(2);
-    exec!(cpu, mmu, 0b0011_0010);
+
+    exec!(cpu, mmu, LDD(PtrReg16(HL), Reg8(A)));
+
     assert_eq!(mmu.read8(0xff90), 2);
     assert_eq!(cpu.regs.hl(), 0xff8f);
   }
@@ -1627,10 +1496,11 @@ mod tests {
   #[test]
   fn opcode_ldd_a_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(128);
     mmu._load8(128, 2);
-    exec!(cpu, mmu, 0b0011_1010);
+
+    exec!(cpu, mmu, LDD(Reg8(A), PtrReg16(HL)));
+
     assert_eq!(cpu.regs.a(), 2);
     assert_eq!(cpu.regs.hl(), 127);
   }
@@ -1642,14 +1512,14 @@ mod tests {
     // adds 0x06 to A if small digit is greater than 9
     cpu.regs.set_flag(NF, false);
     cpu.regs.set_a(0x0A);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.a(), 0x10);
 
     // adds 0x60 to A if big digit is greater than 9 and CF is set
     cpu.regs.set_flag(NF, false);
     cpu.regs.set_flag(CF, true);
     cpu.regs.set_a(0xA0);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.a(), 0x00);
 
     // subs 0x06 to A if small digit if C and H flags are set
@@ -1657,7 +1527,7 @@ mod tests {
     cpu.regs.set_flag(CF, false);
     cpu.regs.set_flag(HF, true);
     cpu.regs.set_a(0x07);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.a(), 0x01);
 
     // subs 0x60 to A if small digit if C and C flags are set
@@ -1665,7 +1535,7 @@ mod tests {
     cpu.regs.set_flag(CF, true);
     cpu.regs.set_flag(HF, false);
     cpu.regs.set_a(0x70);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.a(), 0x10);
   }
 
@@ -1676,14 +1546,14 @@ mod tests {
     // HF flag is reset
     cpu.regs.set_flag(NF, false);
     cpu.regs.set_a(0x0A);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.get_flag(HF), false);
 
     // ZF flag is set if result is zero
     cpu.regs.set_flag(NF, false);
     cpu.regs.set_flag(CF, true);
     cpu.regs.set_a(0xA0);
-    exec!(cpu, mmu, 0b0010_0111, arg8 => 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // ZF flag is reset if result is not zero
@@ -1691,39 +1561,41 @@ mod tests {
     cpu.regs.set_flag(CF, false);
     cpu.regs.set_flag(HF, true);
     cpu.regs.set_a(0x07);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.get_flag(ZF), false);
 
     // CF flag is set if adjustment is 0x60
     cpu.regs.set_flag(NF, false);
     cpu.regs.set_flag(CF, true);
     cpu.regs.set_a(0x07);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.get_flag(CF), true);
 
     // CF flag is reset if adjustment is lower than 0x60
     cpu.regs.set_flag(NF, false);
     cpu.regs.set_flag(CF, false);
     cpu.regs.set_a(0x07);
-    exec!(cpu, mmu, 0b0010_0111);
+    exec!(cpu, mmu, DAA);
     assert_eq!(cpu.regs.get_flag(CF), false);
   }
 
   #[test]
   fn opcode_cpl() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b0010_1111);
+
+    exec!(cpu, mmu, CPL);
+
     assert_eq!(cpu.regs.a(), 254);
   }
 
   #[test]
   fn opcode_cpl_flags() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b0010_1111);
+
+    exec!(cpu, mmu, CPL);
+
     assert_eq!(cpu.regs.get_flag(NF), true);
     assert_eq!(cpu.regs.get_flag(HF), true);
   }
@@ -1732,7 +1604,8 @@ mod tests {
   fn opcode_scf() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0b0011_0111);
+    exec!(cpu, mmu, SCF);
+
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), false);
     assert_eq!(cpu.regs.get_flag(CF), true);
@@ -1742,17 +1615,17 @@ mod tests {
   fn opcode_ccf() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0b0011_1111);
+    exec!(cpu, mmu, CCF);
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), false);
     assert_eq!(cpu.regs.get_flag(CF), true);
 
-    exec!(cpu, mmu, 0b0011_1111);
+    exec!(cpu, mmu, CCF);
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), false);
     assert_eq!(cpu.regs.get_flag(CF), false);
 
-    exec!(cpu, mmu, 0b0011_1111);
+    exec!(cpu, mmu, CCF);
     assert_eq!(cpu.regs.get_flag(NF), false);
     assert_eq!(cpu.regs.get_flag(HF), false);
     assert_eq!(cpu.regs.get_flag(CF), true);
@@ -1761,360 +1634,54 @@ mod tests {
   #[test]
   fn opcode_ld_b_r8() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0100_0000);
-    assert_eq!(cpu.regs.b(), 1);
-
     cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0100_0001);
+
+    exec!(cpu, mmu, LD(Reg8(B), Reg8(C)));
+
     assert_eq!(cpu.regs.b(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0100_0010);
-    assert_eq!(cpu.regs.b(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0100_0011);
-    assert_eq!(cpu.regs.b(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0100_0100);
-    assert_eq!(cpu.regs.b(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0100_0101);
-    assert_eq!(cpu.regs.b(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0100_0110);
-    assert_eq!(cpu.regs.b(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0100_0111);
-    assert_eq!(cpu.regs.b(), 8);
-  }
-
-  #[test]
-  fn opcode_ld_c_r8() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0100_1000);
-    assert_eq!(cpu.regs.c(), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0100_1001);
-    assert_eq!(cpu.regs.c(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0100_1010);
-    assert_eq!(cpu.regs.c(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0100_1011);
-    assert_eq!(cpu.regs.c(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0100_1100);
-    assert_eq!(cpu.regs.c(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0100_1101);
-    assert_eq!(cpu.regs.c(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0100_1110);
-    assert_eq!(cpu.regs.c(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0100_1111);
-    assert_eq!(cpu.regs.c(), 8);
-  }
-
-  #[test]
-  fn opcode_ld_d_r8() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0101_0000);
-    assert_eq!(cpu.regs.d(), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0101_0001);
-    assert_eq!(cpu.regs.d(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0101_0010);
-    assert_eq!(cpu.regs.d(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0101_0011);
-    assert_eq!(cpu.regs.d(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0101_0100);
-    assert_eq!(cpu.regs.d(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0101_0101);
-    assert_eq!(cpu.regs.d(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0101_0110);
-    assert_eq!(cpu.regs.d(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0101_0111);
-    assert_eq!(cpu.regs.d(), 8);
-  }
-
-  #[test]
-  fn opcode_ld_e_r8() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0101_1000);
-    assert_eq!(cpu.regs.e(), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0101_1001);
-    assert_eq!(cpu.regs.e(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0101_1010);
-    assert_eq!(cpu.regs.e(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0101_1011);
-    assert_eq!(cpu.regs.e(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0101_1100);
-    assert_eq!(cpu.regs.e(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0101_1101);
-    assert_eq!(cpu.regs.e(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0101_1110);
-    assert_eq!(cpu.regs.e(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0101_1111);
-    assert_eq!(cpu.regs.e(), 8);
-  }
-
-  #[test]
-  fn opcode_ld_h_r8() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0110_0000);
-    assert_eq!(cpu.regs.h(), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0110_0001);
-    assert_eq!(cpu.regs.h(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0110_0010);
-    assert_eq!(cpu.regs.h(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0110_0011);
-    assert_eq!(cpu.regs.h(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0110_0100);
-    assert_eq!(cpu.regs.h(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0110_0101);
-    assert_eq!(cpu.regs.h(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0110_0110);
-    assert_eq!(cpu.regs.h(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0110_0111);
-    assert_eq!(cpu.regs.h(), 8);
-  }
-
-  #[test]
-  fn opcode_ld_l_r8() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0110_1000);
-    assert_eq!(cpu.regs.l(), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0110_1001);
-    assert_eq!(cpu.regs.l(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0110_1010);
-    assert_eq!(cpu.regs.l(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0110_1011);
-    assert_eq!(cpu.regs.l(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0110_1100);
-    assert_eq!(cpu.regs.l(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0110_1101);
-    assert_eq!(cpu.regs.l(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0110_1110);
-    assert_eq!(cpu.regs.l(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0110_1111);
-    assert_eq!(cpu.regs.l(), 8);
   }
 
   #[test]
   fn opcode_ld_hl_r8() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(0xff90);
-
     cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0111_0000);
+
+    exec!(cpu, mmu, LD(PtrReg16(HL), Reg8(B)));
+
     assert_eq!(mmu.read8(0xff90), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0111_0001);
-    assert_eq!(mmu.read8(0xff90), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0111_0010);
-    assert_eq!(mmu.read8(0xff90), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0111_0011);
-    assert_eq!(mmu.read8(0xff90), 4);
-
-    cpu.regs.set_h(0xff);
-    exec!(cpu, mmu, 0b0111_0100);
-    assert_eq!(mmu.read8(cpu.regs.hl() as usize), 0xff);
-
-    cpu.regs.set_l(0x90);
-    exec!(cpu, mmu, 0b0111_0101);
-    assert_eq!(mmu.read8(cpu.regs.hl() as usize), 0x90);
-
-    cpu.regs.set_a(7);
-    exec!(cpu, mmu, 0b0111_0111);
-    assert_eq!(mmu.read8(cpu.regs.hl() as usize), 7);
   }
 
   #[test]
-  fn opcode_ld_a_r8() {
+  fn opcode_add_a_r8() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    cpu.regs.set_b(1);
-    exec!(cpu, mmu, 0b0111_1000);
-    assert_eq!(cpu.regs.a(), 1);
-
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b0111_1001);
-    assert_eq!(cpu.regs.a(), 2);
-
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b0111_1010);
-    assert_eq!(cpu.regs.a(), 3);
-
-    cpu.regs.set_e(4);
-    exec!(cpu, mmu, 0b0111_1011);
-    assert_eq!(cpu.regs.a(), 4);
-
-    cpu.regs.set_h(5);
-    exec!(cpu, mmu, 0b0111_1100);
-    assert_eq!(cpu.regs.a(), 5);
-
-    cpu.regs.set_l(6);
-    exec!(cpu, mmu, 0b0111_1101);
-    assert_eq!(cpu.regs.a(), 6);
-
-    mmu.write8(0xff90, 7);
-    cpu.regs.set_hl(0xff90);
-    exec!(cpu, mmu, 0b0111_1110);
-    assert_eq!(cpu.regs.a(), 7);
-
-    cpu.regs.set_a(8);
-    exec!(cpu, mmu, 0b0111_1111);
-    assert_eq!(cpu.regs.a(), 8);
-  }
-
-  #[test]
-  fn opcode_add() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    // ADD A, B
     cpu.regs.set_a(1);
     cpu.regs.set_b(2);
-    exec!(cpu, mmu, 0b1000_0000);
-    assert_eq!(cpu.regs.a(), 3);
 
-    // ADD A, C
-    cpu.regs.set_a(1);
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b1000_0001);
-    assert_eq!(cpu.regs.a(), 3);
+    exec!(cpu, mmu, ALU(Add, Reg8(A), Reg8(B)));
 
-    // ADD A, D
-    cpu.regs.set_a(1);
-    cpu.regs.set_d(2);
-    exec!(cpu, mmu, 0b1000_0010);
     assert_eq!(cpu.regs.a(), 3);
+  }
 
-    // ADD A, E
-    cpu.regs.set_a(1);
-    cpu.regs.set_e(2);
-    exec!(cpu, mmu, 0b1000_0011);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADD A, H
-    cpu.regs.set_a(1);
-    cpu.regs.set_h(2);
-    exec!(cpu, mmu, 0b1000_0100);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADD A, L
-    cpu.regs.set_a(1);
-    cpu.regs.set_l(2);
-    exec!(cpu, mmu, 0b1000_0101);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADD A, (HL)
+  #[test]
+  fn opcode_add_a_hl() {
+    let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_a(1);
     cpu.regs.set_hl(0xff90);
     mmu.write8(0xff90, 2);
-    exec!(cpu, mmu, 0b1000_0110);
+
+    exec!(cpu, mmu, ALU(Add, Reg8(A), PtrReg16(HL)));
+
     assert_eq!(cpu.regs.a(), 3);
+  }
 
-    // ADD A, A
+  #[test]
+  fn opcode_add_a_n() {
+    let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_a(1);
-    println!("{}", cpu.regs.pc());
-    exec!(cpu, mmu, 0b1000_0111);
-    assert_eq!(cpu.regs.a(), 2);
 
-    // ADD A, N
-    cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b1100_0110, arg8 => 2);
+    exec!(cpu, mmu, ALU(Add, Reg8(A), Imm8), arg8 => 2);
+
     assert_eq!(cpu.regs.a(), 3);
   }
 
@@ -2125,83 +1692,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1000_0000);
+    exec!(cpu, mmu, ALU(Add, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag set if overflow from bit 3
     cpu.regs.set_a(0x0A);
     cpu.regs.set_b(0x0A);
-    exec!(cpu, mmu, 0b1000_0000);
+    exec!(cpu, mmu, ALU(Add, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // NF flag reset
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1000_0000);
+    exec!(cpu, mmu, ALU(Add, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), false);
 
     // CF flag reset
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xA0);
-    exec!(cpu, mmu, 0b1000_0000);
+    exec!(cpu, mmu, ALU(Add, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
   fn opcode_adc() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // ADC A, B
     cpu.regs.set_a(1);
     cpu.regs.set_b(2);
-    exec!(cpu, mmu, 0b1000_1000);
-    assert_eq!(cpu.regs.a(), 3);
 
-    // ADC A, C
-    cpu.regs.set_a(1);
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b1000_1001);
-    assert_eq!(cpu.regs.a(), 3);
+    exec!(cpu, mmu, ALU(Adc, Reg8(A), Reg8(B)));
 
-    // ADC A, D
-    cpu.regs.set_a(1);
-    cpu.regs.set_d(2);
-    exec!(cpu, mmu, 0b1000_1010);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADC A, E
-    cpu.regs.set_a(1);
-    cpu.regs.set_e(2);
-    exec!(cpu, mmu, 0b1000_1011);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADC A, H
-    cpu.regs.set_a(1);
-    cpu.regs.set_h(2);
-    exec!(cpu, mmu, 0b1000_1100);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADC A, L
-    cpu.regs.set_a(1);
-    cpu.regs.set_l(2);
-    exec!(cpu, mmu, 0b1000_1101);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADC A, (HL)
-    cpu.regs.set_a(1);
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 2);
-    exec!(cpu, mmu, 0b1000_1110);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // ADC A, A
-    cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b1000_1111);
-    assert_eq!(cpu.regs.a(), 2);
-
-    // ADD A, N
-    cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b1100_1110, arg8 => 2);
     assert_eq!(cpu.regs.a(), 3);
   }
 
@@ -2212,83 +1732,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1000_1000);
+    exec!(cpu, mmu, ALU(Adc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag set if overflow from bit 3
     cpu.regs.set_a(0x0A);
     cpu.regs.set_b(0x0A);
-    exec!(cpu, mmu, 0b1000_1000);
+    exec!(cpu, mmu, ALU(Adc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // NF flag reset
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1000_1000);
+    exec!(cpu, mmu, ALU(Adc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), false);
 
     // CF flag reset
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xA0);
-    exec!(cpu, mmu, 0b1000_1000);
+    exec!(cpu, mmu, ALU(Adc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
   fn opcode_sub() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // SUB A, B
     cpu.regs.set_a(5);
     cpu.regs.set_b(2);
-    exec!(cpu, mmu, 0b1001_0000);
-    assert_eq!(cpu.regs.a(), 3);
 
-    // SUB A, C
-    cpu.regs.set_a(5);
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b1001_0001);
-    assert_eq!(cpu.regs.a(), 3);
+    exec!(cpu, mmu, ALU(Sub, Reg8(A), Reg8(B)));
 
-    // SUB A, D
-    cpu.regs.set_a(5);
-    cpu.regs.set_d(2);
-    exec!(cpu, mmu, 0b1001_0010);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SUB A, E
-    cpu.regs.set_a(5);
-    cpu.regs.set_e(2);
-    exec!(cpu, mmu, 0b1001_0011);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SUB A, H
-    cpu.regs.set_a(5);
-    cpu.regs.set_h(2);
-    exec!(cpu, mmu, 0b1001_0100);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SUB A, L
-    cpu.regs.set_a(5);
-    cpu.regs.set_l(2);
-    exec!(cpu, mmu, 0b1001_0101);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SUB A, (HL)
-    cpu.regs.set_a(5);
-    cpu.regs.set_hl(1024);
-    mmu._load8(1024, 2);
-    exec!(cpu, mmu, 0b1001_0110);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SUB A, A
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1001_0111);
-    assert_eq!(cpu.regs.a(), 0);
-
-    // SUB A, N
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1101_0110, arg8 => 2);
     assert_eq!(cpu.regs.a(), 3);
   }
 
@@ -2299,83 +1772,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1001_0000);
+    exec!(cpu, mmu, ALU(Sub, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag set if borrow from bit 4
     cpu.regs.set_a(0x10);
     cpu.regs.set_b(0x01);
-    exec!(cpu, mmu, 0b1001_0000);
+    exec!(cpu, mmu, ALU(Sub, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // NF flag set
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1001_0000);
+    exec!(cpu, mmu, ALU(Sub, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), true);
 
     // CF flag set if r8 > A
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xB0);
-    exec!(cpu, mmu, 0b1001_0000);
+    exec!(cpu, mmu, ALU(Sub, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
   fn opcode_sbc() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // SBC A, B
     cpu.regs.set_a(5);
     cpu.regs.set_b(2);
-    exec!(cpu, mmu, 0b1001_1000);
-    assert_eq!(cpu.regs.a(), 3);
 
-    // SBC A, C
-    cpu.regs.set_a(5);
-    cpu.regs.set_c(2);
-    exec!(cpu, mmu, 0b1001_1001);
-    assert_eq!(cpu.regs.a(), 3);
+    exec!(cpu, mmu, ALU(Sbc, Reg8(A), Reg8(B)));
 
-    // SBC A, D
-    cpu.regs.set_a(5);
-    cpu.regs.set_d(2);
-    exec!(cpu, mmu, 0b1001_1010);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SBC A, E
-    cpu.regs.set_a(5);
-    cpu.regs.set_e(2);
-    exec!(cpu, mmu, 0b1001_1011);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SBC A, H
-    cpu.regs.set_a(5);
-    cpu.regs.set_h(2);
-    exec!(cpu, mmu, 0b1001_1100);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SBC A, L
-    cpu.regs.set_a(5);
-    cpu.regs.set_l(2);
-    exec!(cpu, mmu, 0b1001_1101);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SBC A, (HL)
-    cpu.regs.set_a(5);
-    cpu.regs.set_hl(1024);
-    mmu._load8(1024, 2);
-    exec!(cpu, mmu, 0b1001_1110);
-    assert_eq!(cpu.regs.a(), 3);
-
-    // SBC A, A
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1001_1111);
-    assert_eq!(cpu.regs.a(), 0);
-
-    // SBC A, N
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1101_1110, arg8 => 2);
     assert_eq!(cpu.regs.a(), 3);
   }
 
@@ -2386,83 +1812,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1001_1000);
+    exec!(cpu, mmu, ALU(Sbc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag set if borrow from bit 4
     cpu.regs.set_a(0x10);
     cpu.regs.set_b(0x01);
-    exec!(cpu, mmu, 0b1001_1000);
+    exec!(cpu, mmu, ALU(Sbc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // NF flag set
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1001_1000);
+    exec!(cpu, mmu, ALU(Sbc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), true);
 
     // CF flag set if r8 > A
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xB0);
-    exec!(cpu, mmu, 0b1001_1000);
+    exec!(cpu, mmu, ALU(Sbc, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
   fn opcode_and() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // AND A, B
     cpu.regs.set_a(5);
     cpu.regs.set_b(3);
-    exec!(cpu, mmu, 0b1010_0000);
-    assert_eq!(cpu.regs.a(), 1);
 
-    // AND A, C
-    cpu.regs.set_a(5);
-    cpu.regs.set_c(3);
-    exec!(cpu, mmu, 0b1010_0001);
-    assert_eq!(cpu.regs.a(), 1);
+    exec!(cpu, mmu, ALU(And, Reg8(A), Reg8(B)));
 
-    // AND A, D
-    cpu.regs.set_a(5);
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b1010_0010);
-    assert_eq!(cpu.regs.a(), 1);
-
-    // AND A, E
-    cpu.regs.set_a(5);
-    cpu.regs.set_e(3);
-    exec!(cpu, mmu, 0b1010_0011);
-    assert_eq!(cpu.regs.a(), 1);
-
-    // AND A, H
-    cpu.regs.set_a(5);
-    cpu.regs.set_h(3);
-    exec!(cpu, mmu, 0b1010_0100);
-    assert_eq!(cpu.regs.a(), 1);
-
-    // AND A, L
-    cpu.regs.set_a(5);
-    cpu.regs.set_l(3);
-    exec!(cpu, mmu, 0b1010_0101);
-    assert_eq!(cpu.regs.a(), 1);
-
-    // AND A, (HL)
-    cpu.regs.set_a(5);
-    cpu.regs.set_hl(1024);
-    mmu._load8(1024, 3);
-    exec!(cpu, mmu, 0b1010_0110);
-    assert_eq!(cpu.regs.a(), 1);
-
-    // AND A, A
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1010_0111);
-    assert_eq!(cpu.regs.a(), 5);
-
-    // AND A, N
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1110_0110, arg8 => 9);
     assert_eq!(cpu.regs.a(), 1);
   }
 
@@ -2473,83 +1852,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1010_0000);
+    exec!(cpu, mmu, ALU(And, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag always set
     cpu.regs.set_a(0x10);
     cpu.regs.set_b(0x01);
-    exec!(cpu, mmu, 0b1010_0000);
+    exec!(cpu, mmu, ALU(And, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // NF flag reset
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1010_0000);
+    exec!(cpu, mmu, ALU(And, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), false);
 
     // CF flag reset
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xB0);
-    exec!(cpu, mmu, 0b1010_0000);
+    exec!(cpu, mmu, ALU(And, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), false);
   }
 
   #[test]
   fn opcode_xor() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // XOR A, B
     cpu.regs.set_a(5);
     cpu.regs.set_b(3);
-    exec!(cpu, mmu, 0b1010_1000);
-    assert_eq!(cpu.regs.a(), 6);
 
-    // XOR A, C
-    cpu.regs.set_a(5);
-    cpu.regs.set_c(3);
-    exec!(cpu, mmu, 0b1010_1001);
-    assert_eq!(cpu.regs.a(), 6);
+    exec!(cpu, mmu, ALU(Xor, Reg8(A), Reg8(B)));
 
-    // XOR A, D
-    cpu.regs.set_a(5);
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b1010_1010);
-    assert_eq!(cpu.regs.a(), 6);
-
-    // XOR A, E
-    cpu.regs.set_a(5);
-    cpu.regs.set_e(3);
-    exec!(cpu, mmu, 0b1010_1011);
-    assert_eq!(cpu.regs.a(), 6);
-
-    // XOR A, H
-    cpu.regs.set_a(5);
-    cpu.regs.set_h(3);
-    exec!(cpu, mmu, 0b1010_1100);
-    assert_eq!(cpu.regs.a(), 6);
-
-    // XOR A, L
-    cpu.regs.set_a(5);
-    cpu.regs.set_l(3);
-    exec!(cpu, mmu, 0b1010_1101);
-    assert_eq!(cpu.regs.a(), 6);
-
-    // XOR A, (HL)
-    cpu.regs.set_a(5);
-    cpu.regs.set_hl(1024);
-    mmu._load8(1024, 3);
-    exec!(cpu, mmu, 0b1010_1110);
-    assert_eq!(cpu.regs.a(), 6);
-
-    // XOR A, A
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1010_1111);
-    assert_eq!(cpu.regs.a(), 0);
-
-    // XOR A, N
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1110_1110, arg8 => 3);
     assert_eq!(cpu.regs.a(), 6);
   }
 
@@ -2560,83 +1892,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1010_1000);
+    exec!(cpu, mmu, ALU(Xor, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag always reset
     cpu.regs.set_a(0x10);
     cpu.regs.set_b(0x01);
-    exec!(cpu, mmu, 0b1010_1000);
+    exec!(cpu, mmu, ALU(Xor, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), false);
 
     // NF flag reset
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1010_1000);
+    exec!(cpu, mmu, ALU(Xor, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), false);
 
     // CF flag reset
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xB0);
-    exec!(cpu, mmu, 0b1010_1000);
+    exec!(cpu, mmu, ALU(Xor, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), false);
   }
 
   #[test]
   fn opcode_or() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // OR A, B
     cpu.regs.set_a(5);
     cpu.regs.set_b(3);
-    exec!(cpu, mmu, 0b1011_0000);
-    assert_eq!(cpu.regs.a(), 7);
 
-    // OR A, C
-    cpu.regs.set_a(5);
-    cpu.regs.set_c(3);
-    exec!(cpu, mmu, 0b1011_0001);
-    assert_eq!(cpu.regs.a(), 7);
+    exec!(cpu, mmu, ALU(Or, Reg8(A), Reg8(B)));
 
-    // OR A, D
-    cpu.regs.set_a(5);
-    cpu.regs.set_d(3);
-    exec!(cpu, mmu, 0b1011_0010);
-    assert_eq!(cpu.regs.a(), 7);
-
-    // OR A, E
-    cpu.regs.set_a(5);
-    cpu.regs.set_e(3);
-    exec!(cpu, mmu, 0b1011_0011);
-    assert_eq!(cpu.regs.a(), 7);
-
-    // OR A, H
-    cpu.regs.set_a(5);
-    cpu.regs.set_h(3);
-    exec!(cpu, mmu, 0b1011_0100);
-    assert_eq!(cpu.regs.a(), 7);
-
-    // OR A, L
-    cpu.regs.set_a(5);
-    cpu.regs.set_l(3);
-    exec!(cpu, mmu, 0b1011_0101);
-    assert_eq!(cpu.regs.a(), 7);
-
-    // OR A, (HL)
-    cpu.regs.set_a(5);
-    mmu._load8(1024, 3);
-    cpu.regs.set_hl(1024);
-    exec!(cpu, mmu, 0b1011_0110);
-    assert_eq!(cpu.regs.a(), 7);
-
-    // OR A, A
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1011_0111);
-    assert_eq!(cpu.regs.a(), 5);
-
-    // OR A, N
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1111_0110, arg8 => 3);
     assert_eq!(cpu.regs.a(), 7);
   }
 
@@ -2647,53 +1932,36 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1011_0000);
+    exec!(cpu, mmu, ALU(Or, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag always reset
     cpu.regs.set_a(0x10);
     cpu.regs.set_b(0x01);
-    exec!(cpu, mmu, 0b1011_0000);
+    exec!(cpu, mmu, ALU(Or, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), false);
 
     // NF flag reset
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1011_0000);
+    exec!(cpu, mmu, ALU(Or, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), false);
 
     // CF flag reset
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xB0);
-    exec!(cpu, mmu, 0b1011_0000);
+    exec!(cpu, mmu, ALU(Or, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), false);
   }
 
   #[test]
   fn opcode_cp() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // CP A, B
     cpu.regs.set_a(5);
     cpu.regs.set_b(2);
-    exec!(cpu, mmu, 0b1011_1000);
-    assert_eq!(cpu.regs.a(), 5);
 
-    // CP A, (HL)
-    cpu.regs.set_a(5);
-    cpu.regs.set_hl(1024);
-    mmu._load8(1024, 2);
-    exec!(cpu, mmu, 0b1011_1110);
-    assert_eq!(cpu.regs.a(), 5);
+    exec!(cpu, mmu, ALU(Cp, Reg8(A), Reg8(B)));
 
-    // CP A, A
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1011_1111);
-    assert_eq!(cpu.regs.a(), 5);
-
-    // CP A, N
-    cpu.regs.set_a(5);
-    exec!(cpu, mmu, 0b1111_1110, arg8 => 2);
     assert_eq!(cpu.regs.a(), 5);
   }
 
@@ -2704,90 +1972,48 @@ mod tests {
     // ZF flag set if result is zero
     cpu.regs.set_a(0);
     cpu.regs.set_b(0);
-    exec!(cpu, mmu, 0b1011_1000);
+    exec!(cpu, mmu, ALU(Cp, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // HF flag set if borrow from bit 4
     cpu.regs.set_a(0x10);
     cpu.regs.set_b(0x01);
-    exec!(cpu, mmu, 0b1011_1000);
+    exec!(cpu, mmu, ALU(Cp, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(HF), true);
 
     // NF flag set
     cpu.regs.set_a(7);
     cpu.regs.set_b(7);
-    exec!(cpu, mmu, 0b1011_1000);
+    exec!(cpu, mmu, ALU(Cp, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(NF), true);
 
     // CF flag set if r8 > A
     cpu.regs.set_a(0xA0);
     cpu.regs.set_b(0xB0);
-    exec!(cpu, mmu, 0b1011_1000);
+    exec!(cpu, mmu, ALU(Cp, Reg8(A), Reg8(B)));
     assert_eq!(cpu.regs.get_flag(CF), true);
   }
 
   #[test]
   fn opcode_pop() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // POP BC
     cpu.regs.set_sp(1024);
     mmu._load16(1024, 0xAF);
-    exec!(cpu, mmu, 0b1100_0001);
+
+    exec!(cpu, mmu, POP(BC));
+
     assert_eq!(cpu.regs.bc(), 0xAF);
-    assert_eq!(cpu.regs.sp(), 1026);
-
-    // POP DE
-    cpu.regs.set_sp(1024);
-    mmu._load16(1024, 0xAF);
-    exec!(cpu, mmu, 0b1101_0001);
-    assert_eq!(cpu.regs.de(), 0xAF);
-    assert_eq!(cpu.regs.sp(), 1026);
-
-    // POP HL
-    cpu.regs.set_sp(1024);
-    mmu._load16(1024, 0xAF);
-    exec!(cpu, mmu, 0b1110_0001);
-    assert_eq!(cpu.regs.hl(), 0xAF);
-    assert_eq!(cpu.regs.sp(), 1026);
-
-    // POP AF
-    cpu.regs.set_sp(1024);
-    mmu._load16(1024, 0xAF);
-    exec!(cpu, mmu, 0b1111_0001);
-    assert_eq!(cpu.regs.af(), 0xAF);
     assert_eq!(cpu.regs.sp(), 1026);
   }
 
   #[test]
   fn opcode_push() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // PUSH BC
     cpu.regs.set_sp(0xff90);
     cpu.regs.set_bc(0xAF);
-    exec!(cpu, mmu, 0b1100_0101);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 0xAF);
 
-    // PUSH DE
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_de(0xAF);
-    exec!(cpu, mmu, 0b1100_0101);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 0xAF);
+    exec!(cpu, mmu, PUSH(BC));
 
-    // PUSH HL
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_hl(0xAF);
-    exec!(cpu, mmu, 0b1110_0101);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 0xAF);
-
-    // PUSH AF
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_af(0xAF);
-    exec!(cpu, mmu, 0b1111_0101);
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 0xAF);
   }
@@ -2801,72 +2027,18 @@ mod tests {
     cpu.regs.set_sp(0xff90);
     cpu.regs.set_flag(ZF, false);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1100_0000);
+    let new_pc = exec!(cpu, mmu, RET(NotZero));
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 666);
+    assert_eq!(new_pc, 666);
 
     // RET NZ if Z flag is set
     cpu.regs.set_pc(0);
     cpu.regs.set_sp(0xff90);
     cpu.regs.set_flag(ZF, true);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1100_0000);
-    assert_eq!(cpu.regs.pc(), 1);
+    let new_pc = exec!(cpu, mmu, RET(NotZero));
+    assert_eq!(new_pc, 1);
     assert_eq!(cpu.regs.sp(), 0xff8e);
-
-    // RET Z if Z flag is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_flag(ZF, false);
-    cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1100_1000);
-    assert_eq!(cpu.regs.pc(), 1);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-
-    // RET Z if Z flag is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_flag(ZF, true);
-    cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1100_1000);
-    assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 666);
-
-    // RET NC if C flag is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_flag(CF, false);
-    cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1101_0000);
-    assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 666);
-
-    // RET NC if C flag is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_flag(CF, true);
-    cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1101_0000);
-    assert_eq!(cpu.regs.pc(), 1);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-
-    // RET C if C flag is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_flag(CF, false);
-    cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1101_1000);
-    assert_eq!(cpu.regs.pc(), 1);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-
-    // RET C if C flag is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_sp(0xff90);
-    cpu.regs.set_flag(CF, true);
-    cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1101_1000);
-    assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 666);
   }
 
   #[test]
@@ -2875,9 +2047,11 @@ mod tests {
 
     cpu.regs.set_sp(0xff90);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1100_1001);
+
+    let new_pc = exec!(cpu, mmu, RET(Always));
+
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 666);
+    assert_eq!(new_pc, 666);
   }
 
   #[test]
@@ -2886,9 +2060,9 @@ mod tests {
 
     cpu.regs.set_sp(0xff90);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, 0b1101_1001);
+    let new_pc = exec!(cpu, mmu, RETI);
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 666);
+    assert_eq!(new_pc, 666);
     assert_eq!(cpu.interrupts, 1);
   }
 
@@ -2899,58 +2073,23 @@ mod tests {
     // JP NZ, N when ZF is not set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
-    exec!(cpu, mmu, 0b1100_0010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 123);
+    let new_pc = exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
+    assert_eq!(new_pc, 123);
 
     // JP NZ, N when ZF is set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
-    exec!(cpu, mmu, 0b1100_0010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // JP Z, N when ZF is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(ZF, false);
-    exec!(cpu, mmu, 0b1100_1010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // JP Z, N when ZF is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(ZF, true);
-    exec!(cpu, mmu, 0b1100_1010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 123);
-
-    // JP NC, N when CF is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b1101_0010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 123);
-
-    // JP NC, N when CF is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, true);
-    exec!(cpu, mmu, 0b1101_0010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // JP C, N when CF is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, false);
-    exec!(cpu, mmu, 0b1101_1010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // JP C, N when CF is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, true);
-    exec!(cpu, mmu, 0b1101_1010, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 123);
+    let new_pc = exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
+    assert_eq!(new_pc, 3);
   }
 
   #[test]
   fn opcode_jp_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0b1100_0011, arg8 => 123);
-    assert_eq!(cpu.regs.pc(), 123);
+    let new_pc = exec!(cpu, mmu, JUMP(Always, Imm8), arg16 => 123);
+
+    assert_eq!(new_pc, 123);
   }
 
   #[test]
@@ -2961,172 +2100,131 @@ mod tests {
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
     cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1100_0100, arg16 => 123);
+    let new_pc = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.regs.pc(), 123);
+    assert_eq!(new_pc, 123);
 
     // CALL NZ, N when ZF is set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
     cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1100_0100, arg16 => 123);
+    let new_pc = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // CALL Z, N when ZF is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(ZF, false);
-    cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1100_1100, arg16 => 123);
-    assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // CALL Z, N when ZF is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(ZF, true);
-    cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1100_1100, arg16 => 123);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.regs.pc(), 123);
-
-    // CALL NC, N when CF is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, false);
-    cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1101_0100, arg16 => 123);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.regs.pc(), 123);
-
-    // CALL NC, N when CF is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, true);
-    cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1101_0100, arg16 => 123);
-    assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // CALL C, N when CF is not set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, false);
-    cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1101_1100, arg16 => 123);
-    assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.regs.pc(), 3);
-
-    // CALL C, N when CF is set
-    cpu.regs.set_pc(0);
-    cpu.regs.set_flag(CF, true);
-    cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1101_1100, arg16 => 123);
-    assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.regs.pc(), 123);
+    assert_eq!(new_pc, 3);
   }
 
   #[test]
   fn opcode_call_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // CALL C, N when CF is set
     cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, 0b1100_1101, arg16 => 123);
+
+    let new_pc = exec!(cpu, mmu, CALL(Always, Addr16), arg16 => 123);
+
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.regs.pc(), 123);
+    assert_eq!(new_pc, 123);
   }
 
   #[test]
   fn opcode_add_sp_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_sp(1);
-    exec!(cpu, mmu, 0b1110_1000, arg8 => 3);
+
+    exec!(cpu, mmu, ADD(Reg16(SP), Imm8), arg8 => 3);
+
     assert_eq!(cpu.regs.sp(), 4);
   }
 
   #[test]
   fn opcode_ld_hl_sp_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_sp(1);
-    exec!(cpu, mmu, 0b1111_1000, arg8 => 3);
+
+    exec!(cpu, mmu, LD(Reg16(HL), SPPlusImm8), arg8 => 3);
+
     assert_eq!(cpu.regs.hl(), 4);
   }
 
   #[test]
   fn opcode_ld_ff00_n_a() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b1110_0000, arg8 => 0x80);
+
+    exec!(cpu, mmu, LD(FF00PlusImm8, Reg8(A)), arg8 => 0x80);
+
     assert_eq!(mmu.read8(0xFF80), 1);
   }
 
   #[test]
   fn opcode_ld_a_ff00_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     mmu.write8(0xFF80, 1);
-    exec!(cpu, mmu, 0b1111_0000, arg8 => 0x80);
+
+    exec!(cpu, mmu, LD(Reg8(A), FF00PlusImm8), arg8 => 0x80);
+
     assert_eq!(cpu.regs.a(), 1);
   }
 
   #[test]
   fn opcode_ld_c_a() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_a(1);
     cpu.regs.set_c(0x80);
-    exec!(cpu, mmu, 0b1110_0010);
+
+    exec!(cpu, mmu, LD(PtrReg8(C), Reg8(A)));
+
     assert_eq!(mmu.read8(0xFF80), 1);
   }
 
   #[test]
   fn opcode_ld_a_c() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_c(0x80);
     mmu.write8(0xFF80, 1);
-    exec!(cpu, mmu, 0b1111_0010);
+
+    exec!(cpu, mmu, LD(Reg8(A), PtrReg8(C)));
+
     assert_eq!(cpu.regs.a(), 1);
   }
 
   #[test]
   fn opcode_ld_n_a() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_a(1);
-    exec!(cpu, mmu, 0b1110_1010, arg16 => 0xff90);
+
+    exec!(cpu, mmu, LD(Addr16, Reg8(A)), arg16 => 0xff90);
+
     assert_eq!(mmu.read8(0xff90), 1);
   }
 
   #[test]
   fn opcode_ld_a_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     mmu.write16(0xff90, 1);
-    exec!(cpu, mmu, 0b1111_1010, arg16 => 0xff90);
+
+    exec!(cpu, mmu, LD(Reg8(A), Addr16), arg16 => 0xff90);
+
     assert_eq!(cpu.regs.a(), 1);
   }
 
   #[test]
   fn opcode_jp_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(123);
-    exec!(cpu, mmu, 0b1110_1001);
-    assert_eq!(cpu.regs.pc(), 123);
+
+    let new_pc = exec!(cpu, mmu, JUMP(Always, Reg16(HL)));
+
+    assert_eq!(new_pc, 123);
   }
 
   #[test]
   fn opcode_ld_sp_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
     cpu.regs.set_hl(123);
-    exec!(cpu, mmu, 0b1111_1001);
+
+    exec!(cpu, mmu, LD(Reg16(SP), Reg16(HL)));
+
     assert_eq!(cpu.regs.sp(), 123);
   }
 
@@ -3134,7 +2232,8 @@ mod tests {
   fn opcode_di() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0b1111_0011);
+    exec!(cpu, mmu, DI);
+
     assert_eq!(cpu.interrupts, 0);
   }
 
@@ -3142,247 +2241,61 @@ mod tests {
   fn opcode_ei() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, 0b1111_1011);
+    exec!(cpu, mmu, EI);
+
     assert_eq!(cpu.interrupts, 1);
   }
 
   #[test]
   fn opcode_cb_rlc() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // RLC B
     cpu.regs.set_b(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0000);
+
+    exec_cb!(cpu, mmu, RLC(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0100);
-
-    // RLC C
-    cpu.regs.set_c(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0001);
-    assert_eq!(cpu.regs.c(), 0b0000_0100);
-
-    // RLC D
-    cpu.regs.set_d(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0010);
-    assert_eq!(cpu.regs.d(), 0b0000_0100);
-
-    // RLC C
-    cpu.regs.set_e(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0011);
-    assert_eq!(cpu.regs.e(), 0b0000_0100);
-
-    // RLC H
-    cpu.regs.set_h(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0100);
-    assert_eq!(cpu.regs.h(), 0b0000_0100);
-
-    // RLC L
-    cpu.regs.set_l(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0101);
-    assert_eq!(cpu.regs.l(), 0b0000_0100);
-
-    // RLC (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0100);
-
-    // RLC A
-    cpu.regs.set_a(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0000_0111);
-    assert_eq!(cpu.regs.a(), 0b0000_0100);
   }
 
   #[test]
   fn opcode_cb_rrc() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // RRC B
     cpu.regs.set_b(0b0000_1010);
     mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1000);
+
+    exec_cb!(cpu, mmu, RRC(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0101);
-
-    // RRC C
-    cpu.regs.set_c(0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1001);
-    assert_eq!(cpu.regs.c(), 0b0000_0101);
-
-    // RRC D
-    cpu.regs.set_d(0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1010);
-    assert_eq!(cpu.regs.d(), 0b0000_0101);
-
-    // RRC C
-    cpu.regs.set_e(0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1011);
-    assert_eq!(cpu.regs.e(), 0b0000_0101);
-
-    // RRC H
-    cpu.regs.set_h(0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1100);
-    assert_eq!(cpu.regs.h(), 0b0000_0101);
-
-    // RRC L
-    cpu.regs.set_l(0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1101);
-    assert_eq!(cpu.regs.l(), 0b0000_0101);
-
-    // RRC (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0101);
-
-    // RRC A
-    cpu.regs.set_a(0b0000_1010);
-    mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0000_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0101);
   }
 
   #[test]
   fn opcode_cb_rl() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // RL B
     cpu.regs.set_b(0b0000_0010);
     mmu._load8(0, 0xCB);
-    exec_cb!(cpu, mmu, 0b0001_0000);
+
+    exec_cb!(cpu, mmu, RL(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0100);
-
-    // RL C
-    cpu.regs.set_c(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0001);
-    assert_eq!(cpu.regs.c(), 0b0000_0100);
-
-    // // RL D
-    cpu.regs.set_d(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0010);
-    assert_eq!(cpu.regs.d(), 0b0000_0100);
-
-    // // RL C
-    cpu.regs.set_e(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0011);
-    assert_eq!(cpu.regs.e(), 0b0000_0100);
-
-    // // RL H
-    cpu.regs.set_h(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0100);
-    assert_eq!(cpu.regs.h(), 0b0000_0100);
-
-    // RL L
-    cpu.regs.set_l(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0101);
-    assert_eq!(cpu.regs.l(), 0b0000_0100);
-
-    // RL (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0100);
-
-    // RL A
-    cpu.regs.set_a(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0001_0111);
-    assert_eq!(cpu.regs.a(), 0b0000_0100);
   }
 
   #[test]
   fn opcode_cb_rr() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // RR B
     cpu.regs.set_b(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1000);
+
+    exec_cb!(cpu, mmu, RR(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0101);
-
-    // RR C
-    cpu.regs.set_c(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1001);
-    assert_eq!(cpu.regs.c(), 0b0000_0101);
-
-    // RR D
-    cpu.regs.set_d(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1010);
-    assert_eq!(cpu.regs.d(), 0b0000_0101);
-
-    // RR C
-    cpu.regs.set_e(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1011);
-    assert_eq!(cpu.regs.e(), 0b0000_0101);
-
-    // RR H
-    cpu.regs.set_h(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1100);
-    assert_eq!(cpu.regs.h(), 0b0000_0101);
-
-    // RR L
-    cpu.regs.set_l(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1101);
-    assert_eq!(cpu.regs.l(), 0b0000_0101);
-
-    // RR (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0101);
-
-    // RR A
-    cpu.regs.set_a(0b0000_1010);
-    exec_cb!(cpu, mmu, 0b0001_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0101);
   }
 
   #[test]
   fn opcode_cb_sla_d() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // SLA B
     cpu.regs.set_b(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0000);
+
+    exec_cb!(cpu, mmu, SLA(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0010);
-
-    // SLA C
-    cpu.regs.set_c(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0001);
-    assert_eq!(cpu.regs.c(), 0b0000_0010);
-
-    // SLA D
-    cpu.regs.set_d(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0010);
-    assert_eq!(cpu.regs.d(), 0b0000_0010);
-
-    // SLA E
-    cpu.regs.set_e(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0011);
-    assert_eq!(cpu.regs.e(), 0b0000_0010);
-
-    // SLA H
-    cpu.regs.set_h(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0100);
-    assert_eq!(cpu.regs.h(), 0b0000_0010);
-
-    // SLA L
-    cpu.regs.set_l(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0101);
-    assert_eq!(cpu.regs.l(), 0b0000_0010);
-
-    // SLA (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0010);
-
-    // SLA A
-    cpu.regs.set_a(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_0111);
-    assert_eq!(cpu.regs.a(), 0b0000_0010);
   }
 
   #[test]
@@ -3391,64 +2304,23 @@ mod tests {
 
     // Sets ZF flag if result is 0
     cpu.regs.set_b(0b1000_0000);
-    exec_cb!(cpu, mmu, 0b0010_0000);
+    exec_cb!(cpu, mmu, SLA(Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // Does not set ZF flag if result is 0
     cpu.regs.set_b(0b0100_0000);
-    exec_cb!(cpu, mmu, 0b0010_0000);
+    exec_cb!(cpu, mmu, SLA(Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
   }
 
   #[test]
   fn opcode_cb_sra_d() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // SRA B
     cpu.regs.set_b(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1000);
+
+    exec_cb!(cpu, mmu, SRA(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0001);
-
-    // SRA C
-    cpu.regs.set_c(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1001);
-    assert_eq!(cpu.regs.c(), 0b0000_0001);
-
-    // SRA D
-    cpu.regs.set_d(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1010);
-    assert_eq!(cpu.regs.d(), 0b0000_0001);
-
-    // SRA E
-    cpu.regs.set_e(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1011);
-    assert_eq!(cpu.regs.e(), 0b0000_0001);
-
-    // SRA H
-    cpu.regs.set_h(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1100);
-    assert_eq!(cpu.regs.h(), 0b0000_0001);
-
-    // SRA L
-    cpu.regs.set_l(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1101);
-    assert_eq!(cpu.regs.l(), 0b0000_0001);
-
-    // SRA (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0001);
-
-    // SRA A
-    cpu.regs.set_a(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0001);
-
-    // SRA A with carry
-    cpu.regs.set_a(0b1000_0000);
-    exec_cb!(cpu, mmu, 0b0010_1111);
-    assert_eq!(cpu.regs.a(), 0b1100_0000);
   }
 
   #[test]
@@ -3457,110 +2329,34 @@ mod tests {
 
     // Sets ZF flag if result is 0
     cpu.regs.set_b(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0010_1000);
+    exec_cb!(cpu, mmu, SRA(Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // Does not set ZF flag if result is 0
     cpu.regs.set_b(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0010_1000);
+    exec_cb!(cpu, mmu, SRA(Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
   }
 
   #[test]
   fn opcode_cb_swap_d() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // SWAP B
-    cpu.regs.set_b(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0000);
-    assert_eq!(cpu.regs.b(), 0x21);
-
-    // SWAP C
-    cpu.regs.set_c(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0001);
-    assert_eq!(cpu.regs.c(), 0x21);
-
-    // SWAP D
-    cpu.regs.set_d(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0010);
-    assert_eq!(cpu.regs.d(), 0x21);
-
-    // SWAP E
-    cpu.regs.set_e(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0011);
-    assert_eq!(cpu.regs.e(), 0x21);
-
-    // SWAP H
-    cpu.regs.set_h(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0100);
-    assert_eq!(cpu.regs.h(), 0x21);
-
-    // SWAP L
-    cpu.regs.set_l(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0101);
-    assert_eq!(cpu.regs.l(), 0x21);
-
-    // SWAP (HL)
     cpu.regs.set_hl(0xff90);
     mmu.write8(0xff90, 0x12);
-    exec_cb!(cpu, mmu, 0b0011_0110);
-    assert_eq!(mmu.read8(0xff90), 0x21);
 
-    // SWAP A
-    cpu.regs.set_a(0x12);
-    exec_cb!(cpu, mmu, 0b0011_0111);
-    assert_eq!(cpu.regs.a(), 0x21);
+    exec_cb!(cpu, mmu, SWAP(PtrReg16(HL)));
+
+    assert_eq!(mmu.read8(0xff90), 0x21);
   }
 
   #[test]
   fn opcode_cb_srl_d() {
     let (mut cpu, mut mmu) = new_test_cpu();
-
-    // SRL B
     cpu.regs.set_b(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1000);
+
+    exec_cb!(cpu, mmu, SRL(Reg8(B)));
+
     assert_eq!(cpu.regs.b(), 0b0000_0001);
-
-    // SRL C
-    cpu.regs.set_c(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1001);
-    assert_eq!(cpu.regs.c(), 0b0000_0001);
-
-    // SRL D
-    cpu.regs.set_d(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1010);
-    assert_eq!(cpu.regs.d(), 0b0000_0001);
-
-    // SRL E
-    cpu.regs.set_e(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1011);
-    assert_eq!(cpu.regs.e(), 0b0000_0001);
-
-    // SRL H
-    cpu.regs.set_h(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1100);
-    assert_eq!(cpu.regs.h(), 0b0000_0001);
-
-    // SRL L
-    cpu.regs.set_l(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1101);
-    assert_eq!(cpu.regs.l(), 0b0000_0001);
-
-    // SRL (HL)
-    cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1110);
-    assert_eq!(mmu.read8(0xff90), 0b0000_0001);
-
-    // SRL A
-    cpu.regs.set_a(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1111);
-    assert_eq!(cpu.regs.a(), 0b0000_0001);
-
-    // SRL A with carry
-    cpu.regs.set_a(0b1000_0000);
-    exec_cb!(cpu, mmu, 0b0011_1111);
-    assert_eq!(cpu.regs.a(), 0b0100_0000);
   }
 
   #[test]
@@ -3569,12 +2365,12 @@ mod tests {
 
     // Sets ZF flag if result is 0
     cpu.regs.set_b(0b0000_0001);
-    exec_cb!(cpu, mmu, 0b0011_1000);
+    exec_cb!(cpu, mmu, SRL(Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // Does not set ZF flag if result is 0
     cpu.regs.set_b(0b0000_0010);
-    exec_cb!(cpu, mmu, 0b0011_1000);
+    exec_cb!(cpu, mmu, SRL(Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
   }
 
@@ -3584,25 +2380,25 @@ mod tests {
 
     // BIT N, B sets ZF if bit N is zero
     cpu.regs.set_b(0b0000_0000);
-    exec_cb!(cpu, mmu, 0b0101_0000);
+    exec_cb!(cpu, mmu, BIT(0, Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // BIT N, C does not change ZF if bit N is 1
     cpu.regs.set_flag(ZF, false);
     cpu.regs.set_c(0b0000_0100);
-    exec_cb!(cpu, mmu, 0b0101_0001);
+    exec_cb!(cpu, mmu, BIT(2, Reg8(C)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
 
     // BIT N, (HL) sets ZF if bit N is zero
     cpu.regs.set_hl(123);
     mmu._load8(123, 0b0000_0000);
-    exec_cb!(cpu, mmu, 0b0111_1110);
+    exec_cb!(cpu, mmu, BIT(0, Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
     // BIT N, A does not change ZF if bit N is 1
     cpu.regs.set_flag(ZF, false);
     cpu.regs.set_a(0b1000_0000);
-    exec_cb!(cpu, mmu, 0b0111_1111);
+    exec_cb!(cpu, mmu, BIT(7, Reg8(A)));
     assert_eq!(cpu.regs.get_flag(ZF), false);
   }
 
@@ -3612,13 +2408,13 @@ mod tests {
 
     // RES N, B
     cpu.regs.set_b(0xFF);
-    exec_cb!(cpu, mmu, 0b1001_0000);
+    exec_cb!(cpu, mmu, RES(2, Reg8(B)));
     assert_eq!(cpu.regs.b(), 0b1111_1011);
 
     // RES N, (HL)
     cpu.regs.set_hl(0xff90);
     mmu.write8(0xff90, 0xFF);
-    exec_cb!(cpu, mmu, 0b1001_0110);
+    exec_cb!(cpu, mmu, RES(2, PtrReg16(HL)));
     assert_eq!(mmu.read8(0xff90), 0b1111_1011);
   }
 
@@ -3628,13 +2424,13 @@ mod tests {
 
     // SET N, B
     cpu.regs.set_b(0x00);
-    exec_cb!(cpu, mmu, 0b1101_0000);
+    exec_cb!(cpu, mmu, SET(2, Reg8(B)));
     assert_eq!(cpu.regs.b(), 0b0000_0100);
 
     // SET N, (HL)
     cpu.regs.set_hl(0xff90);
     mmu.write8(0xff90, 0x00);
-    exec_cb!(cpu, mmu, 0b1101_0110);
+    exec_cb!(cpu, mmu, SET(2, PtrReg16(HL)));
     assert_eq!(mmu.read8(0xff90), 0b0000_0100);
   }
 }
