@@ -32,14 +32,17 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
+    println!("{:#04x}: {:?}", current_pc, opcode);
+
     self.exec_opcode(opcode, current_pc, mmu);
 
     let new_pc = match self.jump_to {
-      Some(new_pc) => new_pc,
+      Some(new_pc) => {
+        println!("   JUMP: {:#02x}", new_pc);
+        new_pc
+      }
       None => current_pc + opcodes::op_size(opcode),
     };
-
-    println!("{:#04x}: {:?}", current_pc, opcode);
 
     self.jump_to = None;
 
@@ -107,7 +110,6 @@ impl CPU {
       }
 
       LD(Reg8(reg8), Imm8) => {
-        println!("writing {}", self.read_arg8(mmu));
         self.regs.write8(reg8, self.read_arg8(mmu));
       }
 
@@ -141,7 +143,16 @@ impl CPU {
 
       JUMP(condition, Imm8) => {
         if self.check_jump_condition(condition) {
-          self.jump_to = Some(pc + self.read_arg8(mmu) as u16);
+          use std::convert::TryInto;
+          let arg = self.read_arg8(mmu);
+          let displacement: i8 = unsafe { std::mem::transmute::<u8, i8>(arg) };
+          let abs_displacement: u16 = i8::abs(displacement) as u16;
+
+          if displacement < 0 {
+            self.jump_to = Some(pc - abs_displacement + 2);
+          } else {
+            self.jump_to = Some(pc + abs_displacement + 2);
+          }
         }
       }
 

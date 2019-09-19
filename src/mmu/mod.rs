@@ -142,6 +142,7 @@ impl MMU {
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG],
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG],
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG],
+      IO_BEG..=IO_END => self.zram[index - IO_BEG],
       _ => panic!("Unsupported MMU read8 to address 0x{:x}", index),
     }
   }
@@ -156,8 +157,14 @@ impl MMU {
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG] = value,
+      IO_BEG..=IO_END => self.zram[index - IO_BEG] = value,
       _ => panic!("Unsupported MMU write8 to address {:#06x}", index),
     };
+  }
+
+  pub fn write16(&mut self, index: usize, value: u16) {
+    self.write8(index, (value & 0x00FF) as u8);
+    self.write8(index + 1, ((value & 0xFF00) >> 8) as u8);
   }
 
   pub fn set_flag(&mut self, address: usize, value: bool) {
@@ -192,11 +199,6 @@ impl MMU {
     let current = self.io[index];
 
     (current & (1 << bit_index)) > 0
-  }
-
-  pub fn write16(&mut self, index: usize, value: u16) {
-    self.write8(index, (value & 0x00FF) as u8);
-    self.write8(index + 1, ((value & 0xFF00) >> 8) as u8);
   }
 
   // load a value into write-only memory
