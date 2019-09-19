@@ -11,5 +11,6 @@ taken from the [Awesome Game Boy Development] list.
 2. [Game Boy: Complete Technical Reference](https://gekkio.fi/files/gb-docs/gbctr.pdf): exactly what the name suggests it is;
 3. [RealBoy](https://realboyemulator.wordpress.com/): a series of posts
    describing the hardware and the making of the RealBoy emulator
+4. [BOOT ROM ASM](https://gbdev.gg8.se/wiki/articles/Gameboy_Bootstrap_ROM)
 
 [Awesome Game Boy Development]: https://gbdev.github.io/list.html#emulator-development
