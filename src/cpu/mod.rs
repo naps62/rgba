@@ -36,8 +36,10 @@ impl CPU {
 
     let new_pc = match self.jump_to {
       Some(new_pc) => new_pc,
-      None => opcodes::op_size(opcode),
+      None => current_pc + opcodes::op_size(opcode),
     };
+
+    println!("{:#04x}: {:?}", current_pc, opcode);
 
     self.jump_to = None;
 
@@ -105,6 +107,7 @@ impl CPU {
       }
 
       LD(Reg8(reg8), Imm8) => {
+        println!("writing {}", self.read_arg8(mmu));
         self.regs.write8(reg8, self.read_arg8(mmu));
       }
 
@@ -224,7 +227,10 @@ impl CPU {
         self.push(self.regs.read16(reg16), mmu);
       }
 
-      RST(_) => panic!("Not Implemented yet"),
+      RST(n) => {
+        self.push(self.regs.pc(), mmu);
+        self.jump_to = Some((n as u16) << 3);
+      }
 
       RET(NotZero) => {
         if !self.regs.get_flag(ZF) {
@@ -365,6 +371,8 @@ impl CPU {
 
   fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) {
     use opcodes::{Arg::*, ExtendedOpcode::*};
+
+    println!("   {:?}", decoded_opcode);
 
     match decoded_opcode {
       RLC(Reg8(reg8)) => {
@@ -726,7 +734,6 @@ impl CPU {
 
   fn alu_bit(&mut self, n: u8, v: u8) {
     let r = v & (1 << (n as u32)) == 0;
-    println!("alu bit {} {} = {}", n, v, r);
 
     self.regs.set_flag(NF, false);
     self.regs.set_flag(HF, true);
@@ -1833,6 +1840,16 @@ mod tests {
 
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 0xAF);
+  }
+
+  #[test]
+  fn opcode_rst() {
+    let (mut cpu, mut mmu) = new_test_cpu();
+    cpu.regs.set_sp(0xff90);
+
+    exec!(cpu, mmu, RST(7));
+
+    assert_eq!(cpu.jump_to, Some(0x38));
   }
 
   #[test]

@@ -173,7 +173,7 @@ pub fn op_size(opcode: Opcode) -> u16 {
   match opcode {
     LD(Addr16, _) => 3,
     LD(_, Imm16) => 3,
-    LD(_, Imm8) => 3,
+    LD(_, Imm8) => 2,
     JUMP(_, Imm8) => 2,
     ALU(_, _, Imm8) => 2,
     JUMP(_, Addr16) => 3,

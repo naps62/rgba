@@ -10,7 +10,3 @@ args:
       required: true
       help: Cartridge file path
       takes_value: true
-  - verbosity:
-      short: v
-      multiple: true
-      help: Set verbosity level
