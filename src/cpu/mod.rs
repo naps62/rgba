@@ -32,13 +32,13 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    println!("{:#04x}: {:?}", current_pc, opcode);
+    // println!("{:#04x}: {:?}", current_pc, opcode);
 
     self.exec_opcode(opcode, current_pc, mmu);
 
     let new_pc = match self.jump_to {
       Some(new_pc) => {
-        println!("   JUMP: {:#02x}", new_pc);
+        // println!("   JUMP: {:#02x}", new_pc);
         new_pc
       }
       None => current_pc + opcodes::op_size(opcode),
@@ -143,7 +143,6 @@ impl CPU {
 
       JUMP(condition, Imm8) => {
         if self.check_jump_condition(condition) {
-          use std::convert::TryInto;
           let arg = self.read_arg8(mmu);
           let displacement: i8 = unsafe { std::mem::transmute::<u8, i8>(arg) };
           let abs_displacement: u16 = i8::abs(displacement) as u16;
@@ -383,7 +382,7 @@ impl CPU {
   fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) {
     use opcodes::{Arg::*, ExtendedOpcode::*};
 
-    println!("   {:?}", decoded_opcode);
+    // println!("   {:?}", decoded_opcode);
 
     match decoded_opcode {
       RLC(Reg8(reg8)) => {

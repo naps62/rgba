@@ -1,9 +1,9 @@
-extern crate crossbeam_channel;
-extern crate glium;
+extern crate graphics;
+extern crate piston;
 
 mod render_thread;
 
-use glium::glutin::Event;
+use crate::input::KeyEvent;
 
 #[allow(dead_code)]
 pub struct Display {
@@ -11,7 +11,7 @@ pub struct Display {
 }
 
 impl Display {
-  pub fn new(input_sender: crossbeam_channel::Sender<Event>) -> Display {
+  pub fn new(input_sender: crossbeam_channel::Sender<KeyEvent>) -> Display {
     Display {
       render_thread: render_thread::spawn(input_sender),
     }

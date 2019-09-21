@@ -1,54 +1,98 @@
+extern crate glium;
+extern crate glium_graphics;
+extern crate piston;
+extern crate rand;
+
+use crate::input::KeyEvent;
 use crossbeam_channel::Sender;
-use glium::{glutin, Display, Frame};
-use glutin::{dpi::LogicalSize, Event, EventsLoop};
-use std::{thread, time};
+use glium_graphics::{Glium2d, GliumWindow, Texture};
+use piston::Button;
+use std::thread;
 
-pub fn spawn(input_sender: Sender<Event>) -> thread::JoinHandle<()> {
+const WINDOW_WIDTH: f64 = 600.0;
+const WINDOW_HEIGHT: f64 = 600.0;
+
+const OPEN_GL: glium_graphics::OpenGL = glium_graphics::OpenGL::V3_2;
+
+pub fn spawn(input_sender: Sender<KeyEvent>) -> thread::JoinHandle<()> {
+  use piston::window::WindowSettings;
+
   thread::spawn(move || {
-    use glutin::WindowBuilder;
+    let ref mut window: GliumWindow = WindowSettings::new("RGBA", [WINDOW_WIDTH, WINDOW_HEIGHT])
+      .graphics_api(OPEN_GL)
+      .build()
+      .unwrap();
 
-    let size = LogicalSize::new(800.0, 600.0);
-
-    let mut events_loop = EventsLoop::new();
-    let window_builder = WindowBuilder::new()
-      .with_dimensions(size)
-      .with_title("RGBA");
-
-    let context = glutin::ContextBuilder::new();
-
-    let display = Display::new(window_builder, context, &events_loop).unwrap();
-
-    render_loop(display, &mut events_loop, input_sender);
+    render_loop(window, input_sender);
   })
 }
 
-fn render_loop(display: Display, events_loop: &mut EventsLoop, input_sender: Sender<Event>) {
-  let mut frames = 0;
-  let mut start = time::Instant::now();
+fn random_pixel<T>(rng: &mut T) -> (f32, f32, f32)
+where
+  T: rand::Rng,
+{
+  let x: f32 = rng.gen();
 
-  loop {
-    events_loop.poll_events(|event| {
-      input_sender.send(event).expect("Failed to send event");
-    });
+  (x, x, x)
+}
 
-    let mut frame = display.draw();
-    render_frame(&mut frame);
-    frame.finish().expect("could not finish frame");
+fn random_texture(window: &GliumWindow, w: i32, h: i32) -> Texture {
+  use glium::texture::srgb_texture2d::SrgbTexture2d;
 
-    let full_duration = start.elapsed().as_secs();
-    if full_duration >= 1 {
-      let fps = (frames as f64) / (start.elapsed().as_secs() as f64);
-      println!("FPS: {}", fps);
-      frames = 0;
-      start = time::Instant::now();
-    } else {
-      frames = frames + 1;
+  let mut rng = rand::thread_rng();
+
+  let vec: Vec<Vec<(f32, f32, f32)>> = (0..w)
+    .map(|_| (0..h).map(|_| random_pixel(&mut rng)).collect())
+    .collect();
+
+  let srgb_texture = SrgbTexture2d::new(window, vec).unwrap();
+
+  Texture::new(srgb_texture)
+}
+
+fn render_loop(window: &mut GliumWindow, input_sender: Sender<KeyEvent>) {
+  use piston::input::{PressEvent, ReleaseEvent, RenderEvent};
+
+  let mut g2d = Glium2d::new(OPEN_GL, window);
+
+  while let Some(event) = window.next() {
+    if let Some(args) = event.render_args() {
+      render(&window, &mut g2d, args);
+    }
+
+    if let Some(args) = event.press_args() {
+      process_button(args, true, &input_sender);
+    }
+
+    if let Some(args) = event.release_args() {
+      process_button(args, false, &input_sender);
     }
   }
 }
 
-fn render_frame(frame: &mut Frame) {
-  use glium::Surface;
+fn render(window: &GliumWindow, g2d: &mut Glium2d, args: piston::RenderArgs) {
+  let mut target = window.draw();
+  let img = random_texture(window, 50, 50);
 
-  frame.clear_color(1.0, 0.0, 0.0, 0.5);
+  g2d.draw(&mut target, args.viewport(), |c, g| {
+    use graphics::*;
+
+    clear(color::WHITE, g);
+
+    let (iw, ih) = img.get_size();
+
+    let dx: f64 = WINDOW_WIDTH / iw as f64;
+    let dy: f64 = WINDOW_HEIGHT / ih as f64;
+    image(&img, c.transform.trans(0.0, 0.0).scale(dx, dy), g);
+  });
+  target.finish().unwrap();
+}
+
+fn process_button(args: Button, state: bool, input_sender: &Sender<KeyEvent>) {
+  match args {
+    piston::Button::Keyboard(key) => {
+      input_sender.send((key, state)).unwrap();
+    }
+    _ => (),
+  }
 }

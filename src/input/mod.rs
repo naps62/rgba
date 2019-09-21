@@ -1,7 +1,9 @@
 use crossbeam_channel::Receiver;
 use std::thread;
 
-use glium::glutin::{DeviceEvent, ElementState, Event, KeyboardInput, VirtualKeyCode};
+use piston::keyboard::Key;
+
+pub type KeyEvent = (Key, bool);
 
 #[allow(dead_code)]
 pub struct Input {
@@ -9,54 +11,37 @@ pub struct Input {
 }
 
 impl Input {
-  pub fn new(receiver: Receiver<Event>) -> Input {
+  pub fn new(receiver: Receiver<KeyEvent>) -> Input {
     let thread = thread::spawn(move || receiver_loop(receiver));
 
     Input { thread: thread }
   }
 }
 
-fn receiver_loop(receiver: Receiver<Event>) {
+fn receiver_loop(receiver: Receiver<KeyEvent>) {
   loop {
-    match receiver.recv().expect("Failed to receive input event") {
-      Event::DeviceEvent {
-        event: DeviceEvent::Key(key),
-        ..
-      } => handle_key(key),
-      _ => (),
+    let (key, state) = receiver.recv().expect("Failed to receive input event");
+
+    if state {
+      handle_key_press(key)
+    } else {
+      handle_key_release(key)
     }
   }
 }
 
-fn handle_key(key: KeyboardInput) {
-  match key {
-    KeyboardInput {
-      state: ElementState::Pressed,
-      virtual_keycode: Some(keycode),
-      ..
-    } => handle_key_press(keycode),
-
-    KeyboardInput {
-      state: ElementState::Released,
-      virtual_keycode: Some(keycode),
-      ..
-    } => handle_key_release(keycode),
-    _ => (),
-  }
-}
-
-fn handle_key_press(keycode: VirtualKeyCode) {
+fn handle_key_press(keycode: Key) {
   match keycode {
-    VirtualKeyCode::Escape => std::process::exit(0),
-    VirtualKeyCode::Up => println!("UP"),
-    VirtualKeyCode::Down => println!("DOWN"),
-    VirtualKeyCode::Left => println!("LEFT"),
-    VirtualKeyCode::Right => println!("RIGHT"),
+    Key::Escape => std::process::exit(0),
+    Key::Up => println!("UP"),
+    Key::Down => println!("DOWN"),
+    Key::Left => println!("LEFT"),
+    Key::Right => println!("RIGHT"),
     _ => (),
   }
 }
 
-fn handle_key_release(keycode: VirtualKeyCode) {
+fn handle_key_release(keycode: Key) {
   match keycode {
     _ => (),
   }

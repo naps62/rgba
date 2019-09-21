@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate clap;
 extern crate crossbeam_channel;
-extern crate glium;
 
 pub mod cpu;
 mod display;
