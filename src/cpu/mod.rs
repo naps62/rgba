@@ -34,16 +34,16 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    println!("{:#04x}: {:?}", current_pc, opcode);
+    // println!("{:#04x}: {:?}", current_pc, opcode);
 
     let (jump_to, cycles) = self.exec_opcode(opcode, current_pc, mmu);
 
-    let (new_pc, jumped) = match jump_to {
+    let new_pc = match jump_to {
       Some(new_pc) => {
-        println!("   JUMP: {:#02x}", new_pc);
-        (new_pc, true)
+        // println!("   JUMP: {:#02x}", new_pc);
+        new_pc
       }
-      None => (current_pc + opcodes::op_size(opcode), false),
+      None => current_pc + opcodes::op_size(opcode),
     };
 
     self.regs.set_pc(new_pc);
@@ -483,7 +483,7 @@ impl CPU {
   fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) -> u8 {
     use opcodes::{Arg::*, ExtendedOpcode::*};
 
-    println!("   {:?}", decoded_opcode);
+    // println!("   {:?}", decoded_opcode);
 
     match decoded_opcode {
       RLC(Reg8(reg8)) => {
