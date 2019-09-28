@@ -63,6 +63,7 @@ fn render_loop(window: &mut PistonWindow, input_sender: Sender<KeyEvent>, buffer
 }
 
 fn render(window: &mut PistonWindow, event: &Event, buffer: &Arc<Buffer>) {
+  panic!("Get the actual window dimensions here");
   let (width, height) = (600, 600);
 
   let img = buffer_to_texture(window, buffer);
