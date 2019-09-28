@@ -11,8 +11,10 @@ use Register8::*;
 pub struct CPU {
   regs: Registers,
   interrupts: u32,
-  jump_to: Option<u16>,
+  cycles: u32,
 }
+
+type ExecResult = (Option<u16>, u8);
 
 impl CPU {
   #[allow(dead_code)]
@@ -20,7 +22,7 @@ impl CPU {
     CPU {
       regs: Registers::new(),
       interrupts: 0,
-      jump_to: None,
+      cycles: 0,
     }
   }
 
@@ -32,114 +34,141 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    // println!("{:#04x}: {:?}", current_pc, opcode);
+    println!("{:#04x}: {:?}", current_pc, opcode);
 
-    self.exec_opcode(opcode, current_pc, mmu);
+    let (jump_to, cycles) = self.exec_opcode(opcode, current_pc, mmu);
 
-    let new_pc = match self.jump_to {
+    let (new_pc, jumped) = match jump_to {
       Some(new_pc) => {
-        // println!("   JUMP: {:#02x}", new_pc);
-        new_pc
+        println!("   JUMP: {:#02x}", new_pc);
+        (new_pc, true)
       }
-      None => current_pc + opcodes::op_size(opcode),
+      None => (current_pc + opcodes::op_size(opcode), false),
     };
 
-    self.jump_to = None;
-
     self.regs.set_pc(new_pc);
+    self.cycles += cycles as u32;
   }
 
   // executes the given opcode
   #[allow(unused_macros)]
-  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut MMU) {
+  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut MMU) -> ExecResult {
     use opcodes::{Arg::*, JumpCondition::*, Opcode::*};
 
     match opcode {
-      NOP => (),
+      NOP => (None, 4),
 
       LD(Addr16, Reg16(reg16)) => {
-        mmu.write16(self.read_arg16(mmu) as usize, self.regs.read16(reg16))
+        mmu.write16(self.read_arg16(mmu) as usize, self.regs.read16(reg16));
+
+        (None, 16)
       }
 
-      LD(Reg16(reg16), Imm16) => self.regs.write16(reg16, self.read_arg16(mmu)),
+      LD(Reg16(reg16), Imm16) => {
+        self.regs.write16(reg16, self.read_arg16(mmu));
 
-      ADD(Reg16(HL), Reg16(reg16)) => self.alu_add_hl(self.regs.read16(reg16)),
-
-      LD(Reg16(reg16), Reg8(reg8)) => {
-        mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8))
+        (None, 12)
       }
 
-      LD(Reg8(reg8), Reg16(reg16)) => {
-        self
-          .regs
-          .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
+      ADD(Reg16(HL), Reg16(reg16)) => {
+        self.alu_add_hl(self.regs.read16(reg16));
+
+        (None, 8)
       }
 
       INC(Reg16(reg16)) => {
         self
           .regs
           .write16(reg16, self.regs.read16(reg16).wrapping_add(1));
+
+        (None, 8)
       }
 
       DEC(Reg16(reg16)) => {
         self
           .regs
           .write16(reg16, self.regs.read16(reg16).wrapping_sub(1));
+
+        (None, 8)
       }
 
       INC(Reg8(reg8)) => {
         let v = self.alu_inc(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        (None, 4)
       }
 
       INC(PtrReg16(reg16)) => {
         let ptr: usize = self.regs.read16(reg16) as usize;
         let v = self.alu_inc(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        (None, 12)
       }
 
       DEC(Reg8(reg8)) => {
         let v = self.alu_dec(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        (None, 8)
       }
 
       DEC(PtrReg16(reg16)) => {
         let ptr: usize = self.regs.read16(reg16) as usize;
         let v = self.alu_dec(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        (None, 12)
       }
 
       LD(Reg8(reg8), Imm8) => {
         self.regs.write8(reg8, self.read_arg8(mmu));
+
+        (None, 8)
       }
 
       LD(PtrReg16(reg16), Imm8) => {
         let ptr: usize = self.regs.read16(reg16) as usize;
         mmu.write8(ptr, self.read_arg8(mmu));
+
+        (None, 12)
       }
 
       // RdCA
       RLCA => {
         let v = self.alu_rlc(self.regs.a());
         self.regs.set_a(v);
+
+        (None, 4)
       }
 
       RRCA => {
         let v = self.alu_rrc(self.regs.a());
         self.regs.set_a(v);
+
+        (None, 4)
       }
 
       RLA => {
         let v = self.alu_rl(self.regs.a());
         self.regs.set_a(v);
+
+        (None, 4)
       }
 
       RRA => {
         let v = self.alu_rr(self.regs.a());
         self.regs.set_a(v);
+
+        (None, 4)
       }
 
-      STOP => panic!("not done yet"),
+      STOP => {
+        panic!("not done yet");
+
+        (None, 4)
+      }
 
       JUMP(condition, Imm8) => {
         if self.check_jump_condition(condition) {
@@ -148,16 +177,20 @@ impl CPU {
           let abs_displacement: u16 = i8::abs(displacement) as u16;
 
           if displacement < 0 {
-            self.jump_to = Some(pc - abs_displacement + 2);
+            (Some(pc - abs_displacement + 2), 12)
           } else {
-            self.jump_to = Some(pc + abs_displacement + 2);
+            (Some(pc + abs_displacement + 2), 12)
           }
+        } else {
+          (None, 8)
         }
       }
 
       LDI(PtrReg16(reg16), Reg8(reg8)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_add(1));
+
+        (None, 8)
       }
 
       LDI(Reg8(reg8), PtrReg16(reg16)) => {
@@ -165,11 +198,15 @@ impl CPU {
           .regs
           .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_add(1));
+
+        (None, 8)
       }
 
       LDD(PtrReg16(reg16), Reg8(reg8)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_sub(1));
+
+        (None, 8)
       }
 
       LDD(Reg8(reg8), PtrReg16(reg16)) => {
@@ -177,340 +214,448 @@ impl CPU {
           .regs
           .write8(reg8, mmu.read8(self.regs.read16(reg16) as usize));
         self.regs.set_hl(self.regs.read16(reg16).wrapping_sub(1));
+
+        (None, 8)
       }
 
       DAA => {
         self.alu_daa();
+
+        (None, 4)
       }
 
       CPL => {
         self.regs.set_a(!self.regs.a());
         self.regs.set_flag(NF, true);
         self.regs.set_flag(HF, true);
+
+        (None, 4)
       }
 
       SCF => {
         self.regs.set_flag(CF, true);
         self.regs.set_flag(NF, false);
         self.regs.set_flag(HF, false);
+
+        (None, 4)
       }
 
       CCF => {
         self.regs.set_flag(CF, !self.regs.get_flag(CF));
         self.regs.set_flag(NF, false);
         self.regs.set_flag(HF, false);
+
+        (None, 4)
       }
 
       LD(Reg8(reg8_dest), Reg8(reg8_orig)) => {
         self.regs.write8(reg8_dest, self.regs.read8(reg8_orig));
+
+        (None, 4)
       }
 
       LD(Reg8(reg8_dest), PtrReg16(reg16)) => {
         self
           .regs
           .write8(reg8_dest, mmu.read8(self.regs.read16(reg16) as usize));
+
+        (None, 8)
       }
 
       LD(PtrReg16(reg16), Reg8(reg8_orig)) => {
         mmu.write8(self.regs.read16(reg16) as usize, self.regs.read8(reg8_orig));
+
+        (None, 8)
       }
 
-      HALT => panic!("not done yet"),
+      HALT => {
+        panic!("not done yet");
+
+        (None, 4)
+      }
 
       ALU(op, Reg8(A), from) => {
-        let d = match from {
-          Reg8(r) => self.regs.read8(r),
-          PtrReg16(r) => mmu.read8(self.regs.read16(r) as usize),
-          Imm8 => self.read_arg8(mmu),
+        let (d, cycles) = match from {
+          Reg8(r) => (self.regs.read8(r), 4),
+          PtrReg16(r) => (mmu.read8(self.regs.read16(r) as usize), 8),
+          Imm8 => (self.read_arg8(mmu), 8),
           _ => unreachable!(),
         };
 
         self.alu_op(op, d);
+
+        (None, cycles)
       }
 
       POP(reg16) => {
         let v = self.pop(mmu);
         self.regs.write16(reg16, v);
+
+        (None, 12)
       }
 
       PUSH(reg16) => {
         self.push(self.regs.read16(reg16), mmu);
+
+        (None, 16)
       }
 
       RST(n) => {
         self.push(self.regs.pc(), mmu);
-        self.jump_to = Some((n as u16) << 3);
+
+        (Some((n as u16) << 3), 16)
       }
 
       RET(NotZero) => {
         if !self.regs.get_flag(ZF) {
-          self.jump_to = Some(self.pop(mmu));
+          (Some(self.pop(mmu)), 20)
+        } else {
+          (None, 8)
         }
       }
 
       RET(Zero) => {
         if self.regs.get_flag(ZF) {
-          self.jump_to = Some(self.pop(mmu));
+          (Some(self.pop(mmu)), 20)
+        } else {
+          (None, 8)
         }
       }
 
       RET(NotCarry) => {
         if !self.regs.get_flag(CF) {
-          self.jump_to = Some(self.pop(mmu));
+          (Some(self.pop(mmu)), 20)
+        } else {
+          (None, 8)
         }
       }
 
       RET(Carry) => {
         if self.regs.get_flag(CF) {
-          self.jump_to = Some(self.pop(mmu));
+          (Some(self.pop(mmu)), 20)
+        } else {
+          (None, 8)
         }
       }
 
-      RET(Always) => {
-        self.jump_to = Some(self.pop(mmu));
-      }
+      RET(Always) => (Some(self.pop(mmu)), 16),
 
       RETI => {
         self.interrupts = 1;
-        self.jump_to = Some(self.pop(mmu));
+
+        (Some(self.pop(mmu)), 16)
       }
 
       JUMP(condition, Addr16) => {
         if self.check_jump_condition(condition) {
-          self.jump_to = Some(self.read_arg16(mmu));
+          (Some(self.read_arg16(mmu)), 12)
+        } else {
+          (None, 8)
         }
       }
 
       CALL(NotZero, Addr16) => {
         if !self.regs.get_flag(ZF) {
           self.push(pc + 3, mmu);
-          self.jump_to = Some(self.read_arg16(mmu));
+          (Some(self.read_arg16(mmu)), 24)
+        } else {
+          (None, 12)
         }
       }
 
       CALL(Zero, Addr16) => {
         if self.regs.get_flag(ZF) {
           self.push(pc + 3, mmu);
-          self.jump_to = Some(self.read_arg16(mmu));
+          (Some(self.read_arg16(mmu)), 24)
+        } else {
+          (None, 12)
         }
       }
 
       CALL(NotCarry, Addr16) => {
         if !self.regs.get_flag(CF) {
           self.push(pc + 3, mmu);
-          self.jump_to = Some(self.read_arg16(mmu));
+          (Some(self.read_arg16(mmu)), 24)
+        } else {
+          (None, 12)
         }
       }
 
       CALL(Carry, Addr16) => {
         if self.regs.get_flag(CF) {
           self.push(pc + 3, mmu);
-          self.jump_to = Some(self.read_arg16(mmu));
+          (Some(self.read_arg16(mmu)), 24)
+        } else {
+          (None, 12)
         }
       }
 
       CALL(Always, Addr16) => {
         self.push(pc + 3, mmu);
-        self.jump_to = Some(self.read_arg16(mmu));
+        (Some(self.read_arg16(mmu)), 24)
       }
 
       ADD(Reg16(reg16), Imm8) => {
         let v = self.alu_add16imm(self.regs.read16(reg16), mmu);
         self.regs.write16(reg16, v);
+
+        (None, 16)
       }
 
       LD(Reg16(reg16), SPPlusImm8) => {
         let v = self.alu_add16imm(self.regs.sp(), mmu);
         self.regs.write16(reg16, v);
+
+        (None, 12)
       }
 
       LD(HighMemImm8, Reg8(reg8)) => {
         let ptr = (0xFF00 | self.read_arg8(mmu) as u16) as usize;
         mmu.write8(ptr, self.regs.read8(reg8));
+
+        (None, 12)
       }
 
       LD(Reg8(reg8), HighMemImm8) => {
         let ptr = (0xFF00 | self.read_arg8(mmu) as u16) as usize;
         self.regs.write8(reg8, mmu.read8(ptr));
+
+        (None, 12)
       }
 
       LD(HighMemReg8(reg8_dest), Reg8(reg8_orig)) => {
         let ptr = (0xFF00 | self.regs.read8(reg8_dest) as u16) as usize;
         mmu.write8(ptr, self.regs.read8(reg8_orig));
+
+        (None, 8)
       }
 
       LD(Reg8(reg8_dest), HighMemReg8(reg8_orig)) => {
         let ptr = (0xFF00 | self.regs.read8(reg8_orig) as u16) as usize;
         self.regs.write8(reg8_dest, mmu.read8(ptr));
+
+        (None, 8)
       }
 
       LD(Addr16, Reg8(reg8)) => {
         let ptr = self.read_arg16(mmu) as usize;
         mmu.write8(ptr, self.regs.read8(reg8));
+
+        (None, 16)
       }
 
       LD(Reg8(reg8), Addr16) => {
         let ptr = self.read_arg16(mmu) as usize;
         self.regs.write8(reg8, mmu.read8(ptr));
+
+        (None, 16)
       }
 
-      JUMP(Always, Reg16(reg16)) => {
-        self.jump_to = Some(self.regs.read16(reg16));
-      }
+      JUMP(Always, Reg16(reg16)) => (Some(self.regs.read16(reg16)), 4),
 
       LD(Reg16(reg16_dest), Reg16(reg16_orig)) => {
         self.regs.write16(reg16_dest, self.regs.read16(reg16_orig));
+
+        (None, 8)
       }
 
       DI => {
         self.interrupts = 0;
+
+        (None, 4)
       }
 
       EI => {
         self.interrupts = 1;
+
+        (None, 4)
       }
 
       CALLBACK => {
         let extended_opcode = opcodes::decode_extended(self.read_arg8(mmu));
-        self.exec_cb(extended_opcode, mmu);
+        (None, self.exec_cb(extended_opcode, mmu))
       }
 
       _ => unreachable!("Unexpected opcode: {:?}", opcode),
-    };
+    }
   }
 
-  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) {
+  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) -> u8 {
     use opcodes::{Arg::*, ExtendedOpcode::*};
 
-    // println!("   {:?}", decoded_opcode);
+    println!("   {:?}", decoded_opcode);
 
     match decoded_opcode {
       RLC(Reg8(reg8)) => {
         let v = self.alu_rlc(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       RLC(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rlc(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       RRC(Reg8(reg8)) => {
         let v = self.alu_rrc(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       RRC(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rrc(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       RL(Reg8(reg8)) => {
         let v = self.alu_rl(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       RL(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rl(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       RR(Reg8(reg8)) => {
         let v = self.alu_rr(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       RR(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_rr(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       SLA(Reg8(reg8)) => {
         let v = self.alu_sla(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       SLA(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_sla(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       SRA(Reg8(reg8)) => {
         let v = self.alu_sra(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       SRA(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_sra(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       SWAP(Reg8(reg8)) => {
         let v = self.alu_swap(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       SWAP(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_swap(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       SRL(Reg8(reg8)) => {
         let v = self.alu_srl(self.regs.read8(reg8));
         self.regs.write8(reg8, v);
+
+        8
       }
 
       SRL(PtrReg16(reg16)) => {
         let ptr = self.regs.read16(reg16) as usize;
         let v = self.alu_srl(mmu.read8(ptr));
         mmu.write8(ptr, v);
+
+        16
       }
 
       BIT(n, Reg8(reg8)) => {
         let v = self.regs.read8(reg8);
 
         self.alu_bit(n, v);
+
+        8
       }
 
       BIT(n, PtrReg16(reg16)) => {
         let v = mmu.read8(self.regs.read16(reg16) as usize);
 
         self.alu_bit(n, v);
-      }
 
-      RES(n, PtrReg16(reg16)) => {
-        let v = mmu.read8(self.regs.read16(reg16) as usize);
-
-        mmu.write8(self.regs.read16(reg16) as usize, v & !(1 << n));
+        12
       }
 
       RES(n, Reg8(reg8)) => {
         let v = self.regs.read8(reg8);
 
         self.regs.write8(reg8, v & !(1 << n));
+
+        8
       }
 
-      SET(n, PtrReg16(reg16)) => {
+      RES(n, PtrReg16(reg16)) => {
         let v = mmu.read8(self.regs.read16(reg16) as usize);
 
-        mmu.write8(self.regs.read16(reg16) as usize, v | (1 << n));
+        mmu.write8(self.regs.read16(reg16) as usize, v & !(1 << n));
+
+        16
       }
 
       SET(n, Reg8(reg8)) => {
         let v = self.regs.read8(reg8);
 
         self.regs.write8(reg8, v | (1 << n));
+
+        8
+      }
+
+      SET(n, PtrReg16(reg16)) => {
+        let v = mmu.read8(self.regs.read16(reg16) as usize);
+
+        mmu.write8(self.regs.read16(reg16) as usize, v | (1 << n));
+
+        16
       }
 
       opcode => unreachable!("Unknown extended opcode #{:?}", opcode),
-    };
+    }
   }
 
   fn alu_add_hl(&mut self, d: u16) {
