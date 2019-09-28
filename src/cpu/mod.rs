@@ -167,7 +167,7 @@ impl CPU {
       STOP => {
         panic!("not done yet");
 
-        (None, 4)
+        // (None, 4)
       }
 
       JUMP(condition, Imm8) => {
@@ -271,7 +271,7 @@ impl CPU {
       HALT => {
         panic!("not done yet");
 
-        (None, 4)
+        // (None, 4)
       }
 
       ALU(op, Reg8(A), from) => {

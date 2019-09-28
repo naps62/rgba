@@ -1,39 +1,30 @@
+extern crate image;
 extern crate rand;
 
+use image::{ImageBuffer, Rgba, RgbaImage};
 use std::sync::{Mutex, MutexGuard};
 
-pub type Pixel = (f32, f32, f32);
-pub type Data = Vec<Vec<Pixel>>;
-
 pub struct Buffer {
-  data: Mutex<Data>,
+  data: Mutex<RgbaImage>,
 }
 
 impl Buffer {
-  pub fn get(&self) -> MutexGuard<Data> {
+  pub fn get(&self) -> MutexGuard<RgbaImage> {
     self.data.lock().unwrap()
   }
 
-  pub fn from_data(data: Data) -> Buffer {
+  pub fn from_data(data: RgbaImage) -> Buffer {
     Buffer {
       data: Mutex::new(data),
     }
   }
 
-  pub fn from_size(w: i32, h: i32) -> Buffer {
-    let data = (0..w)
-      .map(|_| (0..h).map(|_| (1.0, 1.0, 1.0)).collect())
-      .collect();
+  pub fn from_size(w: u32, h: u32) -> Buffer {
+    let buf = (0..w * h * 4).map(|_| 127).collect();
+
+    let data = ImageBuffer::from_vec(w, h, buf).unwrap();
 
     Buffer::from_data(data)
-  }
-
-  pub fn from_random(w: i32, h: i32) -> Buffer {
-    let buffer = Buffer::from_size(w, h);
-
-    buffer.randomize();
-
-    buffer
   }
 
   pub fn randomize(&self) {
@@ -41,20 +32,28 @@ impl Buffer {
 
     let mut data = self.get();
 
-    for i in 0..data.len() {
-      for j in 0..data[0].len() {
-        data[i][j] = random_pixel(&mut rng);
-      }
+    for p in data.pixels_mut() {
+      *p = random_pixel(&mut rng);
+    }
+  }
+
+  #[allow(dead_code)]
+  pub fn reset(&self) {
+    let mut data = self.get();
+
+    for p in data.pixels_mut() {
+      *p = new_pixel();
     }
   }
 }
 
-fn random_pixel<T>(rng: &mut T) -> Pixel
+fn new_pixel() -> Rgba<u8> {
+  Rgba::<u8>([0, 0, 0, 0])
+}
+
+fn random_pixel<T>(rng: &mut T) -> Rgba<u8>
 where
   T: rand::Rng,
 {
-  // let x: f32 = rng.gen();
-  rng.gen()
-
-  //   (x, x, x)
+  Rgba::<u8>([rng.gen(), rng.gen(), rng.gen(), rng.gen()])
 }

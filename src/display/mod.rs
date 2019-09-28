@@ -15,12 +15,12 @@ pub struct Display {
   buffer: Arc<Buffer>,
 }
 
-const WIDTH: f64 = 300.0;
-const HEIGHT: f64 = 300.0;
+const WIDTH: f64 = 600.0;
+const HEIGHT: f64 = 600.0;
 
 impl Display {
   pub fn new(input_sender: crossbeam_channel::Sender<KeyEvent>) -> Display {
-    let buffer = Arc::new(Buffer::from_random(100, 100));
+    let buffer = Arc::new(Buffer::from_size(160, 144));
 
     let buffer_clone = Arc::clone(&buffer);
 

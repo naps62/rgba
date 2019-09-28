@@ -1,15 +1,17 @@
-extern crate glium;
-extern crate glium_graphics;
+extern crate gfx_graphics;
 extern crate piston;
+extern crate piston_window;
+extern crate texture;
+
+use gfx_graphics::TextureContext;
+use piston_window::{PistonWindow, Texture};
 
 use crate::display::buffer::Buffer;
 use crate::input::KeyEvent;
 use crossbeam_channel::Sender;
-use glium_graphics::{Glium2d, GliumWindow, Texture};
 use piston::Button;
+use piston::Event;
 use std::{sync::Arc, thread};
-
-const OPEN_GL: glium_graphics::OpenGL = glium_graphics::OpenGL::V3_2;
 
 pub fn spawn(
   width: f64,
@@ -20,8 +22,7 @@ pub fn spawn(
   use piston::window::WindowSettings;
 
   thread::spawn(move || {
-    let ref mut window: GliumWindow = WindowSettings::new("RGBA", [width, height])
-      .graphics_api(OPEN_GL)
+    let ref mut window: PistonWindow = WindowSettings::new("RGBA", [width, height])
       .build()
       .unwrap();
 
@@ -29,22 +30,26 @@ pub fn spawn(
   })
 }
 
-fn buffer_to_texture(window: &GliumWindow, buffer: &Arc<Buffer>) -> Texture {
-  use glium::texture::srgb_texture2d::SrgbTexture2d;
+fn buffer_to_texture(
+  window: &mut PistonWindow,
+  buffer: &Arc<Buffer>,
+) -> Texture<gfx_device_gl::Resources> {
+  use texture::{Filter, TextureSettings};
 
-  let srgb_texture = SrgbTexture2d::new(window, buffer.get().clone()).unwrap();
-
-  Texture::new(srgb_texture)
+  Texture::from_image(
+    &mut window.create_texture_context(),
+    &buffer.get(),
+    &TextureSettings::new().filter(Filter::Nearest),
+  )
+  .unwrap()
 }
 
-fn render_loop(window: &mut GliumWindow, input_sender: Sender<KeyEvent>, buffer: Arc<Buffer>) {
+fn render_loop(window: &mut PistonWindow, input_sender: Sender<KeyEvent>, buffer: Arc<Buffer>) {
   use piston::input::{PressEvent, ReleaseEvent, RenderEvent};
-
-  let mut g2d = Glium2d::new(OPEN_GL, window);
 
   while let Some(event) = window.next() {
     if let Some(args) = event.render_args() {
-      render(&window, &mut g2d, args, &buffer);
+      render(window, &event, &buffer);
     }
 
     if let Some(args) = event.press_args() {
@@ -57,15 +62,12 @@ fn render_loop(window: &mut GliumWindow, input_sender: Sender<KeyEvent>, buffer:
   }
 }
 
-fn render(window: &GliumWindow, g2d: &mut Glium2d, args: piston::RenderArgs, buffer: &Arc<Buffer>) {
-  use glium::Surface;
-
-  let mut target = window.draw();
-  let (width, height) = target.get_dimensions();
+fn render(window: &mut PistonWindow, event: &Event, buffer: &Arc<Buffer>) {
+  let (width, height) = (600, 600);
 
   let img = buffer_to_texture(window, buffer);
 
-  g2d.draw(&mut target, args.viewport(), |c, g| {
+  window.draw_2d(event, |c, g, _| {
     use graphics::*;
 
     clear(color::WHITE, g);
@@ -76,7 +78,6 @@ fn render(window: &GliumWindow, g2d: &mut Glium2d, args: piston::RenderArgs, buf
     let dy: f64 = height as f64 / ih as f64;
     image(&img, c.transform.trans(0.0, 0.0).scale(dx, dy), g);
   });
-  target.finish().unwrap();
 }
 
 fn process_button(args: Button, state: bool, input_sender: &Sender<KeyEvent>) {
