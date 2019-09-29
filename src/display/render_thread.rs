@@ -3,7 +3,6 @@ extern crate piston;
 extern crate piston_window;
 extern crate texture;
 
-use gfx_graphics::TextureContext;
 use piston_window::{PistonWindow, Texture};
 
 use crate::display::buffer::Buffer;
@@ -48,7 +47,7 @@ fn render_loop(window: &mut PistonWindow, input_sender: Sender<KeyEvent>, buffer
   use piston::input::{PressEvent, ReleaseEvent, RenderEvent};
 
   while let Some(event) = window.next() {
-    if let Some(args) = event.render_args() {
+    if let Some(_args) = event.render_args() {
       render(window, &event, &buffer);
     }
 
@@ -63,8 +62,9 @@ fn render_loop(window: &mut PistonWindow, input_sender: Sender<KeyEvent>, buffer
 }
 
 fn render(window: &mut PistonWindow, event: &Event, buffer: &Arc<Buffer>) {
-  panic!("Get the actual window dimensions here");
-  let (width, height) = (600, 600);
+  use piston_window::Window;
+
+  let size = window.size();
 
   let img = buffer_to_texture(window, buffer);
 
@@ -75,8 +75,8 @@ fn render(window: &mut PistonWindow, event: &Event, buffer: &Arc<Buffer>) {
 
     let (iw, ih) = img.get_size();
 
-    let dx: f64 = width as f64 / iw as f64;
-    let dy: f64 = height as f64 / ih as f64;
+    let dx: f64 = size.width as f64 / iw as f64;
+    let dy: f64 = size.height as f64 / ih as f64;
     image(&img, c.transform.trans(0.0, 0.0).scale(dx, dy), g);
   });
 }
