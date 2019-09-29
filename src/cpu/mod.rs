@@ -12,6 +12,7 @@ pub struct CPU {
   regs: Registers,
   interrupts: u32,
   cycles: u32,
+  pub last_instr_cycles: u8,
 }
 
 type ExecResult = (Option<u16>, u8);
@@ -23,6 +24,7 @@ impl CPU {
       regs: Registers::new(),
       interrupts: 0,
       cycles: 0,
+      last_instr_cycles: 0,
     }
   }
 
@@ -47,6 +49,7 @@ impl CPU {
     };
 
     self.regs.set_pc(new_pc);
+    self.last_instr_cycles = cycles;
     self.cycles += cycles as u32;
   }
 
@@ -994,31 +997,27 @@ mod tests {
     ($cpu:expr, $mmu:expr, $opcode:expr) => {{
       let pc = $cpu.regs.pc();
       $mmu._load8(pc as usize, 0x0);
-      $cpu.jump_to = None;
-      $cpu.exec_opcode($opcode, pc, &mut $mmu);
+      $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
 
     ($cpu:expr, $mmu:expr,$opcode:expr, arg8 => $arg8:expr) => {{
       let pc = $cpu.regs.pc();
       $mmu._load8(pc as usize, 0x0);
       $mmu._load8((pc + 1) as usize, $arg8);
-      $cpu.jump_to = None;
-      $cpu.exec_opcode($opcode, pc, &mut $mmu);
+      $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
 
     ($cpu:expr,$mmu:expr, $opcode:expr, arg16 => $arg16:expr) => {{
       let pc = $cpu.regs.pc();
       $mmu._load8(pc as usize, 0x0);
       $mmu._load16((pc + 1) as usize, $arg16);
-      $cpu.jump_to = None;
-      $cpu.exec_opcode($opcode, pc, &mut $mmu);
+      $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
   }
 
   macro_rules! exec_cb {
     ($cpu:expr, $mmu:expr, $opcode:expr) => {{
-      $cpu.jump_to = None;
-      $cpu.exec_cb($opcode, &mut $mmu);
+      $cpu.exec_cb($opcode, &mut $mmu)
     }};
   }
 
@@ -1054,15 +1053,6 @@ mod tests {
     exec!(cpu, mmu, LD(Addr16, Reg16(SP)), arg16 => 0xff90);
 
     assert_eq!(mmu.read16(0xff90), 2047);
-  }
-
-  #[test]
-  fn opcode_ld_r16_n16() {
-    let (mut cpu, mut mmu) = new_test_cpu();
-
-    exec!(cpu, mmu, LD(Reg16(BC), Imm16), arg16 => 511);
-
-    assert_eq!(cpu.regs.read16(BC), 511);
   }
 
   #[test]
@@ -1122,7 +1112,7 @@ mod tests {
     cpu.regs.write8(A, 127);
     cpu.regs.write16(BC, 0xff90);
 
-    exec!(cpu, mmu, LD(Reg16(BC), Reg8(A)));
+    exec!(cpu, mmu, LD(PtrReg16(BC), Reg8(A)));
 
     assert_eq!(mmu.read8(0xff90), 127);
   }
@@ -1133,7 +1123,7 @@ mod tests {
 
     mmu.write8(0xff90, 127);
     cpu.regs.write16(BC, 0xff90);
-    exec!(cpu, mmu, LD(Reg8(A), Reg16(BC)));
+    exec!(cpu, mmu, LD(Reg8(A), PtrReg16(BC)));
     assert_eq!(cpu.regs.read8(A), 127);
   }
 
@@ -1414,9 +1404,9 @@ mod tests {
   fn opcode_jr_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, JUMP(Always, Imm8), arg8 => 0b0000_0011);
+    let (jump, _) = exec!(cpu, mmu, JUMP(Always, Imm8), arg8 => 0b0000_0011);
 
-    assert_eq!(cpu.jump_to, Some(3));
+    assert_eq!(jump, Some(5));
   }
 
   #[test]
@@ -1426,14 +1416,14 @@ mod tests {
     // JR NZ, N increments by N if NZ
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
-    exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
-    assert_eq!(cpu.jump_to, Some(8));
+    let (jump, _) = exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
+    assert_eq!(jump, Some(10));
 
     // JR NZ, N increments by 2 if not NZ
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
-    exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
-    assert_eq!(cpu.jump_to, None);
+    let (jump, _) = exec!(cpu, mmu, JUMP(NotZero, Imm8), arg8 => 0b0000_1000);
+    assert_eq!(jump, None);
   }
 
   #[test]
@@ -2002,9 +1992,9 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_sp(0xff90);
 
-    exec!(cpu, mmu, RST(7));
+    let (jump, _) = exec!(cpu, mmu, RST(7));
 
-    assert_eq!(cpu.jump_to, Some(0x38));
+    assert_eq!(jump, Some(0x38));
   }
 
   #[test]
@@ -2016,17 +2006,17 @@ mod tests {
     cpu.regs.set_sp(0xff90);
     cpu.regs.set_flag(ZF, false);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, RET(NotZero));
+    let (jump, _) = exec!(cpu, mmu, RET(NotZero));
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.jump_to, Some(666));
+    assert_eq!(jump, Some(666));
 
     // RET NZ if Z flag is set
     cpu.regs.set_pc(0);
     cpu.regs.set_sp(0xff90);
     cpu.regs.set_flag(ZF, true);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, RET(NotZero));
-    assert_eq!(cpu.jump_to, None);
+    let (jump, _) = exec!(cpu, mmu, RET(NotZero));
+    assert_eq!(jump, None);
     assert_eq!(cpu.regs.sp(), 0xff8e);
   }
 
@@ -2037,10 +2027,10 @@ mod tests {
     cpu.regs.set_sp(0xff90);
     cpu.push(666, &mut mmu);
 
-    exec!(cpu, mmu, RET(Always));
+    let (jump, _) = exec!(cpu, mmu, RET(Always));
 
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.jump_to, Some(666));
+    assert_eq!(jump, Some(666));
   }
 
   #[test]
@@ -2049,9 +2039,9 @@ mod tests {
 
     cpu.regs.set_sp(0xff90);
     cpu.push(666, &mut mmu);
-    exec!(cpu, mmu, RETI);
+    let (jump, _) = exec!(cpu, mmu, RETI);
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.jump_to, Some(666));
+    assert_eq!(jump, Some(666));
     assert_eq!(cpu.interrupts, 1);
   }
 
@@ -2062,23 +2052,23 @@ mod tests {
     // JP NZ, N when ZF is not set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
-    exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
-    assert_eq!(cpu.jump_to, Some(123));
+    let (jump, _) = exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
+    assert_eq!(jump, Some(123));
 
     // JP NZ, N when ZF is set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
-    exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
-    assert_eq!(cpu.jump_to, None);
+    let (jump, _) = exec!(cpu, mmu, JUMP(NotZero, Addr16), arg16 => 123);
+    assert_eq!(jump, None);
   }
 
   #[test]
   fn opcode_jp_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    exec!(cpu, mmu, JUMP(Always, Imm8), arg16 => 123);
+    let (jump, _) = exec!(cpu, mmu, JUMP(Always, Imm8), arg16 => 123);
 
-    assert_eq!(cpu.jump_to, Some(123));
+    assert_eq!(jump, Some(125));
   }
 
   #[test]
@@ -2089,18 +2079,18 @@ mod tests {
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, false);
     cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
+    let (jump, _) = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.jump_to, Some(123));
+    assert_eq!(jump, Some(123));
 
     // CALL NZ, N when ZF is set
     cpu.regs.set_pc(0);
     cpu.regs.set_flag(ZF, true);
     cpu.regs.set_sp(0xff90);
-    exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
+    let (jump, _) = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff90);
-    assert_eq!(cpu.jump_to, None);
+    assert_eq!(jump, None);
   }
 
   #[test]
@@ -2108,11 +2098,11 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_sp(0xff90);
 
-    exec!(cpu, mmu, CALL(Always, Addr16), arg16 => 123);
+    let (jump, _) = exec!(cpu, mmu, CALL(Always, Addr16), arg16 => 123);
 
     assert_eq!(cpu.regs.sp(), 0xff8e);
     assert_eq!(mmu.read16(0xff8e), 3);
-    assert_eq!(cpu.jump_to, Some(123));
+    assert_eq!(jump, Some(123));
   }
 
   #[test]
@@ -2202,9 +2192,9 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(123);
 
-    exec!(cpu, mmu, JUMP(Always, Reg16(HL)));
+    let (jump, _) = exec!(cpu, mmu, JUMP(Always, Reg16(HL)));
 
-    assert_eq!(cpu.jump_to, Some(123));
+    assert_eq!(jump, Some(123));
   }
 
   #[test]

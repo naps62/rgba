@@ -3,14 +3,13 @@ extern crate piston;
 extern crate piston_window;
 extern crate texture;
 
+use crossbeam_channel::Sender;
+use piston::{Button, Event};
 use piston_window::{PistonWindow, Texture};
+use std::{sync::Arc, thread};
 
 use crate::display::buffer::Buffer;
 use crate::input::KeyEvent;
-use crossbeam_channel::Sender;
-use piston::Button;
-use piston::Event;
-use std::{sync::Arc, thread};
 
 pub fn spawn(
   width: f64,
@@ -64,8 +63,7 @@ fn render_loop(window: &mut PistonWindow, input_sender: Sender<KeyEvent>, buffer
 fn render(window: &mut PistonWindow, event: &Event, buffer: &Arc<Buffer>) {
   use piston_window::Window;
 
-  let size = window.size();
-
+  let size = window.draw_size();
   let img = buffer_to_texture(window, buffer);
 
   window.draw_2d(event, |c, g, _| {
@@ -81,8 +79,8 @@ fn render(window: &mut PistonWindow, event: &Event, buffer: &Arc<Buffer>) {
   });
 }
 
-fn process_button(args: Button, state: bool, input_sender: &Sender<KeyEvent>) {
-  match args {
+fn process_button(button: Button, state: bool, input_sender: &Sender<KeyEvent>) {
+  match button {
     piston::Button::Keyboard(key) => {
       input_sender.send((key, state)).unwrap();
     }

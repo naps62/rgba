@@ -293,14 +293,14 @@ mod test {
 
   #[test]
   fn decode_ld_r16_a() {
-    assert_decode!(0b0000_0010, LD(Reg16(BC), Reg8(A)));
-    assert_decode!(0b0001_0010, LD(Reg16(DE), Reg8(A)));
+    assert_decode!(0b0000_0010, LD(PtrReg16(BC), Reg8(A)));
+    assert_decode!(0b0001_0010, LD(PtrReg16(DE), Reg8(A)));
   }
 
   #[test]
   fn decode_ld_a_r16() {
-    assert_decode!(0b0000_1010, LD(Reg8(A), Reg16(BC)));
-    assert_decode!(0b0001_1010, LD(Reg8(A), Reg16(DE)));
+    assert_decode!(0b0000_1010, LD(Reg8(A), PtrReg16(BC)));
+    assert_decode!(0b0001_1010, LD(Reg8(A), PtrReg16(DE)));
   }
 
   #[test]

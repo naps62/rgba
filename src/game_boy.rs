@@ -35,6 +35,7 @@ impl GameBoy {
   pub fn run(&mut self) {
     loop {
       self.cpu.exec(&mut self.mmu);
+      self.gpu.borrow_mut().step(self.cpu.last_instr_cycles);
     }
   }
 }
