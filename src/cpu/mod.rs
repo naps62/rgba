@@ -989,7 +989,6 @@ impl CPU {
 
 #[cfg(test)]
 mod tests {
-  use super::super::gpu;
   use super::*;
   use opcodes::{ExtendedOpcode::*, JumpCondition::*};
 
@@ -1022,11 +1021,7 @@ mod tests {
   }
 
   fn new_test_cpu() -> (CPU, MMU) {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
-    let gpu = Rc::new(RefCell::new(gpu::GPU::new()));
-    (CPU::new(), MMU::new(false, gpu, vec![0; 1024 * 10]))
+    (CPU::new(), MMU::new(false, vec![0; 1024 * 10]))
   }
 
   use opcodes::{AluOp::*, Arg::*, Opcode::*};

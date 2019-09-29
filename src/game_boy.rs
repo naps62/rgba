@@ -1,18 +1,15 @@
 extern crate crossbeam_channel;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use super::{cpu, display, gpu, input, mmu};
+use super::{buffer::Buffer, cpu, display, gpu, input, mmu};
+use std::sync::Arc;
 
 #[allow(dead_code)]
 pub struct GameBoy {
   mmu: mmu::MMU,
   cpu: cpu::CPU,
-  gpu: Rc<RefCell<gpu::GPU>>,
+  gpu: gpu::GPU,
   display: display::Display,
   input: input::Input,
-  // video_ram: memory::Memory,
 }
 
 impl GameBoy {
@@ -20,14 +17,14 @@ impl GameBoy {
   pub fn new(cartridge_path: &str) -> GameBoy {
     let (input_sender, input_receiver) = crossbeam_channel::unbounded();
 
-    let gpu = Rc::new(RefCell::new(gpu::GPU::new()));
     let cartridge = std::fs::read(cartridge_path).unwrap();
+    let buffer = Arc::new(Buffer::from_size(160, 144));
 
     GameBoy {
       cpu: cpu::CPU::new(),
-      mmu: mmu::MMU::new(true, gpu.clone(), cartridge),
-      gpu: gpu,
-      display: display::Display::new(input_sender),
+      mmu: mmu::MMU::new(true, cartridge),
+      gpu: gpu::GPU::new(Arc::clone(&buffer)),
+      display: display::Display::new(input_sender, Arc::clone(&buffer)),
       input: input::Input::new(input_receiver),
     }
   }
@@ -35,7 +32,7 @@ impl GameBoy {
   pub fn run(&mut self) {
     loop {
       self.cpu.exec(&mut self.mmu);
-      self.gpu.borrow_mut().step(self.cpu.last_instr_cycles);
+      self.gpu.step(&mut self.mmu, self.cpu.last_instr_cycles);
     }
   }
 }

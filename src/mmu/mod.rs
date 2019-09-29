@@ -1,8 +1,4 @@
-use std::cell::RefCell;
 use std::fs;
-use std::rc::Rc;
-
-use super::gpu;
 
 // note: memory is little-endian
 // when reading a 2 byte number, we need to invert the two bytes
@@ -36,9 +32,9 @@ const ROMX_END: usize = 0x7fff;
 // const ROMX_RANGE: MemRange = (ROMX_BEG, ROMX_END);
 
 // Video RAM
-const VRAM_BEG: usize = 0x8000;
-const VRAM_END: usize = 0x9fff;
-// const VRAM_RANGE: MemRange = (VRAM_BEG, VRAM_END);
+pub const VRAM_BEG: usize = 0x8000;
+pub const VRAM_END: usize = 0x9fff;
+const VRAM_RANGE: MemRange = (VRAM_BEG, VRAM_END);
 
 // External (cartridge) RAM
 const ERAM_BEG: usize = 0xa000;
@@ -98,7 +94,7 @@ macro_rules! init_mem_bank {
 pub struct MMU {
   boot: Vec<u8>,
   cartridge: Vec<u8>,
-  gpu: Rc<RefCell<gpu::GPU>>,
+  vram: declare_mem_bank!(VRAM_RANGE),
   eram: declare_mem_bank!(ERAM_RANGE),
   wram0: declare_mem_bank!(WRAM0_RANGE),
   wramx: declare_mem_bank!(WRAMX_RANGE),
@@ -107,7 +103,7 @@ pub struct MMU {
 }
 
 impl MMU {
-  pub fn new(boot_rom: bool, gpu: Rc<RefCell<gpu::GPU>>, cartridge: Vec<u8>) -> MMU {
+  pub fn new(boot_rom: bool, cartridge: Vec<u8>) -> MMU {
     let boot = if boot_rom {
       fs::read("assets/boot_rom.bin").unwrap()
     } else {
@@ -117,7 +113,7 @@ impl MMU {
     let mut mmu = MMU {
       boot: boot,
       cartridge: cartridge,
-      gpu: gpu,
+      vram: init_mem_bank!(VRAM_RANGE),
       eram: init_mem_bank!(ERAM_RANGE),
       wram0: init_mem_bank!(WRAM0_RANGE),
       wramx: init_mem_bank!(WRAMX_RANGE),
@@ -138,7 +134,7 @@ impl MMU {
       ROM0_BEG..=ROM0_END => self.cartridge[index],
       ROMX_BEG..=ROMX_END => self.cartridge[index - ROMX_BEG],
       ERAM_BEG..=ERAM_END => self.eram[index - ERAM_BEG],
-      VRAM_BEG..=VRAM_END => self.gpu.borrow().read8(index - VRAM_BEG),
+      VRAM_BEG..=VRAM_END => self.vram[index - VRAM_BEG],
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG],
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG],
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG],
@@ -147,13 +143,17 @@ impl MMU {
     }
   }
 
+  pub fn vram_read8(&self, index: usize) -> u8 {
+    self.read8(VRAM_BEG + index)
+  }
+
   pub fn read16(&self, index: usize) -> u16 {
     ((self.read8(index + 1) as u16) << 8) | (self.read8(index) as u16)
   }
 
   pub fn write8(&mut self, index: usize, value: u8) {
     match index {
-      VRAM_BEG..=VRAM_END => self.gpu.borrow_mut().write8(index - VRAM_BEG, value),
+      VRAM_BEG..=VRAM_END => self.vram[index - VRAM_BEG] = value,
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG] = value,
@@ -223,8 +223,7 @@ mod tests {
 
   macro_rules! instantiate_mmu {
     () => {{
-      let gpu = Rc::new(RefCell::new(gpu::GPU::new()));
-      MMU::new(false, gpu, vec![0; 1024 * 32])
+      MMU::new(false, vec![0; 1024 * 32])
     }};
   }
 

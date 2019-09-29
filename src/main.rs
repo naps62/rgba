@@ -2,6 +2,7 @@
 extern crate clap;
 extern crate crossbeam_channel;
 
+mod buffer;
 pub mod cpu;
 mod display;
 mod game_boy;

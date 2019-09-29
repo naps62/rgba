@@ -8,7 +8,7 @@ use piston::{Button, Event};
 use piston_window::{PistonWindow, Texture};
 use std::{sync::Arc, thread};
 
-use crate::display::buffer::Buffer;
+use crate::buffer::Buffer;
 use crate::input::KeyEvent;
 
 pub fn spawn(

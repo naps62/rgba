@@ -2,6 +2,7 @@ extern crate image;
 extern crate rand;
 
 use image::{ImageBuffer, Rgba, RgbaImage};
+use rand::random;
 use std::sync::{Mutex, MutexGuard};
 
 pub struct Buffer {
@@ -28,12 +29,10 @@ impl Buffer {
   }
 
   pub fn randomize(&self) {
-    let mut rng = rand::thread_rng();
-
     let mut data = self.get();
 
     for p in data.pixels_mut() {
-      *p = random_pixel(&mut rng);
+      *p = random_pixel();
     }
   }
 
@@ -45,15 +44,18 @@ impl Buffer {
       *p = new_pixel();
     }
   }
+
+  pub fn put_pixel(&self, x: u32, y: u32, pixel: Rgba<u8>) {
+    let mut data = self.get();
+
+    data.put_pixel(x, y, pixel);
+  }
 }
 
 fn new_pixel() -> Rgba<u8> {
   Rgba::<u8>([0, 0, 0, 0])
 }
 
-fn random_pixel<T>(rng: &mut T) -> Rgba<u8>
-where
-  T: rand::Rng,
-{
-  Rgba::<u8>([rng.gen(), rng.gen(), rng.gen(), rng.gen()])
+pub fn random_pixel() -> Rgba<u8> {
+  Rgba::<u8>([random(), random(), random(), random()])
 }
