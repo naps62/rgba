@@ -28,32 +28,11 @@ impl Buffer {
     Buffer::from_data(data)
   }
 
-  pub fn randomize(&self) {
-    let mut data = self.get();
-
-    for p in data.pixels_mut() {
-      *p = random_pixel();
-    }
-  }
-
-  #[allow(dead_code)]
-  pub fn reset(&self) {
-    let mut data = self.get();
-
-    for p in data.pixels_mut() {
-      *p = new_pixel();
-    }
-  }
-
   pub fn put_pixel(&self, x: u32, y: u32, pixel: Rgba<u8>) {
     let mut data = self.get();
 
     data.put_pixel(x, y, pixel);
   }
-}
-
-fn new_pixel() -> Rgba<u8> {
-  Rgba::<u8>([0, 0, 0, 0])
 }
 
 pub fn random_pixel() -> Rgba<u8> {

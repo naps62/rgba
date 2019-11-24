@@ -1,3 +1,6 @@
+use super::registers::{read, write, Reg};
+use crate::mmu::MMU;
+
 #[derive(Debug, PartialEq)]
 pub enum Mode {
   ScanlineOAM = 2,
@@ -38,7 +41,9 @@ impl Step {
 
   // inspired in
   // http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-step.Timings
-  pub fn calc(&mut self, cycles: u8) -> Result {
+  pub fn calc(&mut self, cycles: u8, mmu: &mut dyn MMU) -> Result {
+    let line = read(mmu, Reg::CurrentScanLine);
+
     self.mode_clock = self.mode_clock + cycles as u32;
 
     match self.mode {
@@ -63,9 +68,9 @@ impl Step {
       HBlank => {
         if self.mode_clock >= 204 {
           self.mode_clock = 0;
-          self.line = self.line + 1;
+          write(mmu, Reg::CurrentScanLine, line + 1);
 
-          if self.line == 144 {
+          if line == 143 {
             self.mode = VBlank;
 
           // panic!("render screen");
@@ -79,11 +84,11 @@ impl Step {
       VBlank => {
         if self.mode_clock >= 456 {
           self.mode_clock = 0;
-          self.line = self.line + 1;
+          write(mmu, Reg::CurrentScanLine, line + 1);
 
-          if self.line > 153 {
+          if line > 152 {
             self.mode = ScanlineOAM;
-            self.line = 0;
+            write(mmu, Reg::CurrentScanLine, 0);
           }
         }
 
@@ -96,95 +101,101 @@ impl Step {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::mmu::test_mmu::TestMMU;
 
   #[test]
   fn initial() {
     let step = Step::new();
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(step.line, 0);
     assert_eq!(step.mode_clock, 0);
   }
 
   #[test]
   fn after_8_cycles() {
+    let mut mmu = TestMMU::new();
     let mut step = Step::new();
 
-    step.calc(8);
+    step.calc(8, &mut mmu);
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(step.line, 0);
+    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 8);
   }
 
   #[test]
   fn after_80_cycles() {
+    let mut mmu = TestMMU::new();
     let mut step = Step::new();
 
-    step.calc(80);
+    step.calc(80, &mut mmu);
 
     assert_eq!(step.mode, ScanlineVRAM);
-    assert_eq!(step.line, 0);
+    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 0);
   }
 
   #[test]
   fn after_204_cycles() {
+    let mut mmu = TestMMU::new();
     let mut step = Step::new();
 
-    step.calc(80);
-    step.calc(172);
+    step.calc(80, &mut mmu);
+    step.calc(172, &mut mmu);
 
     assert_eq!(step.mode, HBlank);
-    assert_eq!(step.line, 0);
+    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 0);
   }
 
   #[test]
   fn after_456_cycles() {
+    let mut mmu = TestMMU::new();
     let mut step = Step::new();
 
-    step.calc(80);
-    step.calc(172);
-    step.calc(204);
+    step.calc(80, &mut mmu);
+    step.calc(172, &mut mmu);
+    step.calc(204, &mut mmu);
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(step.line, 1);
+    assert_eq!(read(&mmu, Reg::CurrentScanLine), 1);
     assert_eq!(step.mode_clock, 0);
   }
 
   #[test]
   fn after_144_lines() {
+    let mut mmu = TestMMU::new();
     let mut step = Step::new();
 
     for _i in 0..144 {
-      step.calc(80);
-      step.calc(172);
-      step.calc(204);
+      step.calc(80, &mut mmu);
+      step.calc(172, &mut mmu);
+      step.calc(204, &mut mmu);
     }
 
     assert_eq!(step.mode, VBlank);
-    assert_eq!(step.line, 144);
+    assert_eq!(read(&mmu, Reg::CurrentScanLine), 144);
     assert_eq!(step.mode_clock, 0);
   }
 
   #[test]
   fn after_154_lines() {
+    let mut mmu = TestMMU::new();
     let mut step = Step::new();
 
     for _ in 0..144 {
-      step.calc(80);
-      step.calc(172);
-      step.calc(204);
+      step.calc(80, &mut mmu);
+      step.calc(172, &mut mmu);
+      step.calc(204, &mut mmu);
     }
 
     for _ in 0..10 {
-      step.calc(201);
-      step.calc(255);
+      step.calc(201, &mut mmu);
+      step.calc(255, &mut mmu);
     }
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(step.line, 0);
+    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 0);
   }
 }

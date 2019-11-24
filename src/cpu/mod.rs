@@ -30,7 +30,7 @@ impl CPU {
 
   // executes the next instruction referenced by PC
   #[allow(dead_code)]
-  pub fn exec(&mut self, mmu: &mut MMU) {
+  pub fn exec(&mut self, mmu: &mut dyn MMU) {
     let current_pc = self.regs.read16(PC);
 
     let byte = mmu.read8(current_pc as usize);
@@ -55,7 +55,7 @@ impl CPU {
 
   // executes the given opcode
   #[allow(unused_macros)]
-  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut MMU) -> ExecResult {
+  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut dyn MMU) -> ExecResult {
     use opcodes::{Arg::*, JumpCondition::*, Opcode::*};
 
     match opcode {
@@ -483,7 +483,7 @@ impl CPU {
     }
   }
 
-  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut MMU) -> u8 {
+  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut dyn MMU) -> u8 {
     use opcodes::{Arg::*, ExtendedOpcode::*};
 
     // println!("   {:?}", decoded_opcode);
@@ -934,7 +934,7 @@ impl CPU {
     self.regs.set_a(new_a);
   }
 
-  fn alu_add16imm(&mut self, r: u16, mmu: &MMU) -> u16 {
+  fn alu_add16imm(&mut self, r: u16, mmu: &dyn MMU) -> u16 {
     let d = self.read_arg8(mmu) as u16;
 
     let v = r.wrapping_add(d);
@@ -947,25 +947,25 @@ impl CPU {
     v
   }
 
-  fn push(&mut self, value: u16, mmu: &mut MMU) {
+  fn push(&mut self, value: u16, mmu: &mut dyn MMU) {
     self.regs.set_sp(self.regs.sp() - 2);
     mmu.write16(self.regs.sp() as usize, value);
   }
 
-  fn pop(&mut self, mmu: &mut MMU) -> u16 {
+  fn pop(&mut self, mmu: &mut dyn MMU) -> u16 {
     let v = mmu.read16(self.regs.sp() as usize);
     self.regs.set_sp(self.regs.sp() + 2);
 
     v
   }
 
-  fn read_arg8(&self, mmu: &MMU) -> u8 {
+  fn read_arg8(&self, mmu: &dyn MMU) -> u8 {
     let pc = self.regs.read16(PC);
 
     mmu.read8((pc + 1) as usize)
   }
 
-  fn read_arg16(&self, mmu: &MMU) -> u16 {
+  fn read_arg16(&self, mmu: &dyn MMU) -> u16 {
     let pc = self.regs.read16(PC);
 
     mmu.read16((pc + 1) as usize)
@@ -990,26 +990,27 @@ impl CPU {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::mmu::test_mmu::TestMMU;
   use opcodes::{ExtendedOpcode::*, JumpCondition::*};
 
   macro_rules! exec {
     ($cpu:expr, $mmu:expr, $opcode:expr) => {{
       let pc = $cpu.regs.pc();
-      $mmu._load8(pc as usize, 0x0);
+      $mmu.write8(pc as usize, 0x0);
       $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
 
     ($cpu:expr, $mmu:expr,$opcode:expr, arg8 => $arg8:expr) => {{
       let pc = $cpu.regs.pc();
-      $mmu._load8(pc as usize, 0x0);
-      $mmu._load8((pc + 1) as usize, $arg8);
+      $mmu.write8(pc as usize, 0x0);
+      $mmu.write8((pc + 1) as usize, $arg8);
       $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
 
     ($cpu:expr,$mmu:expr, $opcode:expr, arg16 => $arg16:expr) => {{
       let pc = $cpu.regs.pc();
-      $mmu._load8(pc as usize, 0x0);
-      $mmu._load16((pc + 1) as usize, $arg16);
+      $mmu.write8(pc as usize, 0x0);
+      $mmu.write16((pc + 1) as usize, $arg16);
       $cpu.exec_opcode($opcode, pc, &mut $mmu)
     }};
   }
@@ -1020,8 +1021,8 @@ mod tests {
     }};
   }
 
-  fn new_test_cpu() -> (CPU, MMU) {
-    (CPU::new(), MMU::new(false, vec![0; 1024 * 10]))
+  fn new_test_cpu() -> (CPU, TestMMU) {
+    (CPU::new(), TestMMU::new())
   }
 
   use opcodes::{AluOp::*, Arg::*, Opcode::*};
@@ -1437,7 +1438,7 @@ mod tests {
   fn opcode_ldi_a_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(128);
-    mmu._load8(128, 2);
+    mmu.write8(128, 2);
 
     exec!(cpu, mmu, LDI(Reg8(A), PtrReg16(HL)));
 
@@ -1461,7 +1462,7 @@ mod tests {
   fn opcode_ldd_a_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(128);
-    mmu._load8(128, 2);
+    mmu.write8(128, 2);
 
     exec!(cpu, mmu, LDD(Reg8(A), PtrReg16(HL)));
 
@@ -1962,7 +1963,7 @@ mod tests {
   fn opcode_pop() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_sp(1024);
-    mmu._load16(1024, 0xAF);
+    mmu.write16(1024, 0xAF);
 
     exec!(cpu, mmu, POP(BC));
 
@@ -2234,7 +2235,7 @@ mod tests {
   fn opcode_cb_rrc() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_b(0b0000_1010);
-    mmu._load8(0, 0xCB);
+    mmu.write8(0, 0xCB);
 
     exec_cb!(cpu, mmu, RRC(Reg8(B)));
 
@@ -2245,7 +2246,7 @@ mod tests {
   fn opcode_cb_rl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_b(0b0000_0010);
-    mmu._load8(0, 0xCB);
+    mmu.write8(0, 0xCB);
 
     exec_cb!(cpu, mmu, RL(Reg8(B)));
 
@@ -2365,7 +2366,7 @@ mod tests {
 
     // BIT N, (HL) sets ZF if bit N is zero
     cpu.regs.set_hl(123);
-    mmu._load8(123, 0b0000_0000);
+    mmu.write8(123, 0b0000_0000);
     exec_cb!(cpu, mmu, BIT(0, Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 

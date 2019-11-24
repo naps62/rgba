@@ -1,10 +1,4 @@
-mod interface;
-pub mod real_mmu;
-
-#[cfg(test)]
-pub mod test_mmu;
-
-pub trait MMU {
+pub trait Interface {
   fn read8(&self, index: usize) -> u8;
   fn read16(&self, index: usize) -> u16;
 

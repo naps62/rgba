@@ -1,4 +1,5 @@
 extern crate rand;
+mod registers;
 mod renderscan;
 mod step;
 
@@ -21,10 +22,10 @@ impl GPU {
     }
   }
 
-  pub fn step(&mut self, mmu: &mut MMU, cycles: u8) {
+  pub fn step(&mut self, cycles: u8, mmu: &mut dyn MMU) {
     use step::Result::*;
 
-    match self.step.calc(cycles) {
+    match self.step.calc(cycles, mmu) {
       Renderscan => renderscan(&self.step, mmu, &self.buffer),
       Noop => (),
     }

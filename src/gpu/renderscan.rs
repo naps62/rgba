@@ -8,7 +8,9 @@ use std::sync::Arc;
 const TILEMAP_0_OFFSET: u32 = 0x1800;
 // const TILEMAP_1_OFFSET: u32 = 0x1C00;
 
-pub fn renderscan(step: &Step, mmu: &mmu::MMU, buffer: &Arc<Buffer>) {
+pub const VRAM_BEG: usize = 0x8000;
+
+pub fn renderscan(step: &Step, mmu: &dyn mmu::MMU, buffer: &Arc<Buffer>) {
   let Step { line, scroll, .. } = step;
 
   // todo check if map 1 is to be used
@@ -21,7 +23,7 @@ pub fn renderscan(step: &Step, mmu: &mmu::MMU, buffer: &Arc<Buffer>) {
 
   let _canvas_offset = line * 160 * 4;
 
-  let mut tile_index = mmu.vram_read8((map_offset + line_offset) as usize);
+  let mut tile_index = mmu.read8(VRAM_BEG + (map_offset + line_offset) as usize);
 
   // todo
   // if (tile 1 && tile < 128) {tile_index +=256}
@@ -36,7 +38,7 @@ pub fn renderscan(step: &Step, mmu: &mmu::MMU, buffer: &Arc<Buffer>) {
     if x == 8 {
       x = 0;
       line_offset = (line_offset + 1) & 31;
-      tile_index = mmu.vram_read8((map_offset + line_offset) as usize);
+      tile_index = mmu.read8(VRAM_BEG + (map_offset + line_offset) as usize);
       // todo
       // if (tile 1 && tile < 128) {tile_index +=256}
     }
