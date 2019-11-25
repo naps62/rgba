@@ -26,7 +26,7 @@ impl GPU {
     use step::Result::*;
 
     match self.step.calc(cycles, mmu) {
-      Renderscan => renderscan(&self.step, mmu, &self.buffer),
+      Renderscan => renderscan(&self.buffer, mmu),
       Noop => (),
     }
   }

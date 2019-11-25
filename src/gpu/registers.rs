@@ -20,10 +20,10 @@ impl std::convert::From<Reg> for usize {
   }
 }
 
-pub fn read(mmu: &dyn MMU, reg: Reg) -> u16 {
-  mmu.read16(reg as usize)
+pub fn read(mmu: &dyn MMU, reg: Reg) -> u8 {
+  mmu.read8(reg as usize)
 }
 
-pub fn write(mmu: &mut dyn MMU, reg: Reg, value: u16) {
-  mmu.write16(reg as usize, value);
+pub fn write(mmu: &mut dyn MMU, reg: Reg, value: u8) {
+  mmu.write8(reg as usize, value);
 }

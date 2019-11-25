@@ -15,16 +15,9 @@ pub enum Result {
   Noop,
 }
 
-pub struct Scroll {
-  pub x: u32,
-  pub y: u32,
-}
-
 pub struct Step {
   mode: Mode,
   mode_clock: u32,
-  pub line: u32,
-  pub scroll: Scroll,
 }
 
 use Mode::*;
@@ -34,8 +27,6 @@ impl Step {
     Step {
       mode: Mode::ScanlineOAM,
       mode_clock: 0,
-      line: 0,
-      scroll: Scroll { x: 0, y: 0 },
     }
   }
 
