@@ -123,51 +123,56 @@ impl RealMMU {
     };
 
     if boot_rom {
-      mmu.set_flag(FLAG_BOOT, true);
+      mmu.set_flag(FLAG_BOOT, 0b0000_0001);
     }
 
     mmu
   }
 
-  pub fn set_flag(&mut self, address: usize, value: bool) {
+  pub fn set_flag(&mut self, address: usize, mask: u8) {
     let real_address = match address {
       IO_BEG..=IO_END => address - IO_BEG,
 
       _ => panic!("Unsupported MMU flag address {:#06x}", address),
     };
 
-    let index = real_address & 0xf8;
-    let bit_index = real_address & 0x07;
-
-    let current = self.io[index];
-
-    if value {
-      self.io[index] = current | (1 << bit_index);
-    } else {
-      self.io[index] = current & !(1 << bit_index);
-    }
+    self.io[real_address] = self.io[real_address] | mask;
   }
 
-  pub fn get_flag(&self, address: usize) -> bool {
+  pub fn unset_flag(&mut self, address: usize, mask: u8) {
     let real_address = match address {
       IO_BEG..=IO_END => address - IO_BEG,
 
       _ => panic!("Unsupported MMU flag address {:#06x}", address),
     };
 
-    let index = real_address & 0xf8;
-    let bit_index = real_address & 0x07;
+    self.io[real_address] = self.io[real_address] ^ mask;
+  }
 
-    let current = self.io[index];
+  pub fn get_flag(&self, address: usize, mask: u8) -> bool {
+    let real_address = match address {
+      IO_BEG..=IO_END => address - IO_BEG,
 
-    (current & (1 << bit_index)) > 0
+      _ => panic!("Unsupported MMU flag address {:#06x}", address),
+    };
+
+    let current = self.io[real_address];
+
+    (current & mask) > 0
   }
 }
 
+use std::convert::Into;
+
 impl MMU for RealMMU {
-  fn read8(&self, index: usize) -> u8 {
+  fn read8<I>(&self, idx: I) -> u8
+  where
+    I: Into<usize>,
+  {
+    let index: usize = idx.into();
+
     match index {
-      BOOT_BEG..=BOOT_END if self.get_flag(FLAG_BOOT) => self.boot[index],
+      BOOT_BEG..=BOOT_END if self.get_flag(FLAG_BOOT, 0x01) => self.boot[index],
       ROM0_BEG..=ROM0_END => self.cartridge[index],
       ROMX_BEG..=ROMX_END => self.cartridge[index - ROMX_BEG],
       ERAM_BEG..=ERAM_END => self.eram[index - ERAM_BEG],
@@ -179,11 +184,21 @@ impl MMU for RealMMU {
       _ => panic!("Unsupported MMU read8 to address 0x{:x}", index),
     }
   }
-  fn read16(&self, index: usize) -> u16 {
+  fn read16<I>(&self, idx: I) -> u16
+  where
+    I: Into<usize>,
+  {
+    let index: usize = idx.into();
+
     ((self.read8(index + 1) as u16) << 8) | (self.read8(index) as u16)
   }
 
-  fn write8(&mut self, index: usize, value: u8) {
+  fn write8<I>(&mut self, idx: I, value: u8)
+  where
+    I: Into<usize>,
+  {
+    let index: usize = idx.into();
+
     match index {
       VRAM_BEG..=VRAM_END => self.vram[index - VRAM_BEG] = value,
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
@@ -194,7 +209,12 @@ impl MMU for RealMMU {
     };
   }
 
-  fn write16(&mut self, index: usize, value: u16) {
+  fn write16<I>(&mut self, idx: I, value: u16)
+  where
+    I: Into<usize>,
+  {
+    let index: usize = idx.into();
+
     self.write8(index, (value & 0x00FF) as u8);
     self.write8(index + 1, ((value & 0xFF00) >> 8) as u8);
   }
@@ -267,18 +287,18 @@ mod tests {
   fn set_flag() {
     let mut mmu = instantiate_mmu!();
 
-    mmu.set_flag(FLAG_BOOT, true);
+    mmu.set_flag(FLAG_BOOT, 0x1);
     assert_eq!(mmu.io[FLAG_BOOT - IO_BEG], 1);
 
-    mmu.set_flag(FLAG_BOOT, false);
+    mmu.unset_flag(FLAG_BOOT, 0x1);
     assert_eq!(mmu.io[FLAG_BOOT - IO_BEG], 0);
   }
 
   #[test]
   fn get_flag() {
     let mut mmu = instantiate_mmu!();
-    assert_eq!(mmu.get_flag(FLAG_BOOT), false);
-    mmu.set_flag(FLAG_BOOT, true);
-    assert_eq!(mmu.get_flag(FLAG_BOOT), true);
+    assert_eq!(mmu.get_flag(FLAG_BOOT, 0x1), false);
+    mmu.set_flag(FLAG_BOOT, 0x1);
+    assert_eq!(mmu.get_flag(FLAG_BOOT, 0x1), true);
   }
 }

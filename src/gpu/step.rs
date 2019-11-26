@@ -1,5 +1,4 @@
-use super::registers::{read, write, Reg};
-use crate::mmu::MMU;
+use crate::mmu::{addrs::Addr, MMU};
 
 #[derive(Debug, PartialEq)]
 pub enum Mode {
@@ -32,8 +31,8 @@ impl Step {
 
   // inspired in
   // http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-step.Timings
-  pub fn calc(&mut self, cycles: u8, mmu: &mut dyn MMU) -> Result {
-    let line = read(mmu, Reg::CurrentScanLine);
+  pub fn calc<M: MMU>(&mut self, cycles: u8, mmu: &mut M) -> Result {
+    let line = mmu.read8(Addr::CurrentScanLine as usize);
 
     self.mode_clock = self.mode_clock + cycles as u32;
 
@@ -59,7 +58,7 @@ impl Step {
       HBlank => {
         if self.mode_clock >= 204 {
           self.mode_clock = 0;
-          write(mmu, Reg::CurrentScanLine, line + 1);
+          mmu.write8(Addr::CurrentScanLine, line + 1);
 
           if line == 143 {
             self.mode = VBlank;
@@ -75,11 +74,11 @@ impl Step {
       VBlank => {
         if self.mode_clock >= 456 {
           self.mode_clock = 0;
-          write(mmu, Reg::CurrentScanLine, line + 1);
+          mmu.write8(Addr::CurrentScanLine, line + 1);
 
           if line > 152 {
             self.mode = ScanlineOAM;
-            write(mmu, Reg::CurrentScanLine, 0);
+            mmu.write8(Addr::CurrentScanLine, 0);
           }
         }
 
@@ -110,7 +109,7 @@ mod tests {
     step.calc(8, &mut mmu);
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
+    assert_eq!(mmu.read8(Addr::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 8);
   }
 
@@ -122,7 +121,7 @@ mod tests {
     step.calc(80, &mut mmu);
 
     assert_eq!(step.mode, ScanlineVRAM);
-    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
+    assert_eq!(mmu.read8(Addr::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 0);
   }
 
@@ -135,7 +134,7 @@ mod tests {
     step.calc(172, &mut mmu);
 
     assert_eq!(step.mode, HBlank);
-    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
+    assert_eq!(mmu.read8(Addr::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 0);
   }
 
@@ -149,7 +148,7 @@ mod tests {
     step.calc(204, &mut mmu);
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(read(&mmu, Reg::CurrentScanLine), 1);
+    assert_eq!(mmu.read8(Addr::CurrentScanLine), 1);
     assert_eq!(step.mode_clock, 0);
   }
 
@@ -165,7 +164,7 @@ mod tests {
     }
 
     assert_eq!(step.mode, VBlank);
-    assert_eq!(read(&mmu, Reg::CurrentScanLine), 144);
+    assert_eq!(mmu.read8(Addr::CurrentScanLine), 144);
     assert_eq!(step.mode_clock, 0);
   }
 
@@ -186,7 +185,7 @@ mod tests {
     }
 
     assert_eq!(step.mode, ScanlineOAM);
-    assert_eq!(read(&mmu, Reg::CurrentScanLine), 0);
+    assert_eq!(mmu.read8(Addr::CurrentScanLine), 0);
     assert_eq!(step.mode_clock, 0);
   }
 }

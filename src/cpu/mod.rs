@@ -30,7 +30,7 @@ impl CPU {
 
   // executes the next instruction referenced by PC
   #[allow(dead_code)]
-  pub fn exec(&mut self, mmu: &mut dyn MMU) {
+  pub fn exec<M: MMU>(&mut self, mmu: &mut M) {
     let current_pc = self.regs.read16(PC);
 
     let byte = mmu.read8(current_pc as usize);
@@ -55,7 +55,7 @@ impl CPU {
 
   // executes the given opcode
   #[allow(unused_macros)]
-  fn exec_opcode(&mut self, opcode: Opcode, pc: u16, mmu: &mut dyn MMU) -> ExecResult {
+  fn exec_opcode<M: MMU>(&mut self, opcode: Opcode, pc: u16, mmu: &mut M) -> ExecResult {
     use opcodes::{Arg::*, JumpCondition::*, Opcode::*};
 
     match opcode {
@@ -483,7 +483,7 @@ impl CPU {
     }
   }
 
-  fn exec_cb(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut dyn MMU) -> u8 {
+  fn exec_cb<M: MMU>(&mut self, decoded_opcode: ExtendedOpcode, mmu: &mut M) -> u8 {
     use opcodes::{Arg::*, ExtendedOpcode::*};
 
     // println!("   {:?}", decoded_opcode);
@@ -934,7 +934,7 @@ impl CPU {
     self.regs.set_a(new_a);
   }
 
-  fn alu_add16imm(&mut self, r: u16, mmu: &dyn MMU) -> u16 {
+  fn alu_add16imm<M: MMU>(&mut self, r: u16, mmu: &M) -> u16 {
     let d = self.read_arg8(mmu) as u16;
 
     let v = r.wrapping_add(d);
@@ -947,25 +947,25 @@ impl CPU {
     v
   }
 
-  fn push(&mut self, value: u16, mmu: &mut dyn MMU) {
+  fn push<M: MMU>(&mut self, value: u16, mmu: &mut M) {
     self.regs.set_sp(self.regs.sp() - 2);
     mmu.write16(self.regs.sp() as usize, value);
   }
 
-  fn pop(&mut self, mmu: &mut dyn MMU) -> u16 {
+  fn pop<M: MMU>(&mut self, mmu: &mut M) -> u16 {
     let v = mmu.read16(self.regs.sp() as usize);
     self.regs.set_sp(self.regs.sp() + 2);
 
     v
   }
 
-  fn read_arg8(&self, mmu: &dyn MMU) -> u8 {
+  fn read_arg8<M: MMU>(&self, mmu: &M) -> u8 {
     let pc = self.regs.read16(PC);
 
     mmu.read8((pc + 1) as usize)
   }
 
-  fn read_arg16(&self, mmu: &dyn MMU) -> u16 {
+  fn read_arg16<M: MMU>(&self, mmu: &M) -> u16 {
     let pc = self.regs.read16(PC);
 
     mmu.read16((pc + 1) as usize)
@@ -1048,7 +1048,7 @@ mod tests {
 
     exec!(cpu, mmu, LD(Addr16, Reg16(SP)), arg16 => 0xff90);
 
-    assert_eq!(mmu.read16(0xff90), 2047);
+    assert_eq!(mmu.read16(0xff90u16), 2047);
   }
 
   #[test]
@@ -1110,14 +1110,14 @@ mod tests {
 
     exec!(cpu, mmu, LD(PtrReg16(BC), Reg8(A)));
 
-    assert_eq!(mmu.read8(0xff90), 127);
+    assert_eq!(mmu.read8(0xff90u16), 127);
   }
 
   #[test]
   fn opcode_ld_a_r16() {
     let (mut cpu, mut mmu) = new_test_cpu();
 
-    mmu.write8(0xff90, 127);
+    mmu.write8(0xff90u16, 127);
     cpu.regs.write16(BC, 0xff90);
     exec!(cpu, mmu, LD(Reg8(A), PtrReg16(BC)));
     assert_eq!(cpu.regs.read8(A), 127);
@@ -1196,11 +1196,11 @@ mod tests {
   fn opcode_dec_ptr_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 7);
+    mmu.write8(0xff90u16, 7);
 
     exec!(cpu, mmu, DEC(PtrReg16(HL)));
 
-    assert_eq!(mmu.read8(0xff90), 6);
+    assert_eq!(mmu.read8(0xff90u16), 6);
   }
 
   #[test]
@@ -1430,7 +1430,7 @@ mod tests {
 
     exec!(cpu, mmu, LDI(PtrReg16(HL), Reg8(A)));
 
-    assert_eq!(mmu.read8(0xff90), 2);
+    assert_eq!(mmu.read8(0xff90u16), 2);
     assert_eq!(cpu.regs.hl(), 0xff91);
   }
 
@@ -1438,7 +1438,7 @@ mod tests {
   fn opcode_ldi_a_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(128);
-    mmu.write8(128, 2);
+    mmu.write8(128u16, 2);
 
     exec!(cpu, mmu, LDI(Reg8(A), PtrReg16(HL)));
 
@@ -1454,7 +1454,7 @@ mod tests {
 
     exec!(cpu, mmu, LDD(PtrReg16(HL), Reg8(A)));
 
-    assert_eq!(mmu.read8(0xff90), 2);
+    assert_eq!(mmu.read8(0xff90u16), 2);
     assert_eq!(cpu.regs.hl(), 0xff8f);
   }
 
@@ -1462,7 +1462,7 @@ mod tests {
   fn opcode_ldd_a_hl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(128);
-    mmu.write8(128, 2);
+    mmu.write8(128u16, 2);
 
     exec!(cpu, mmu, LDD(Reg8(A), PtrReg16(HL)));
 
@@ -1614,7 +1614,7 @@ mod tests {
 
     exec!(cpu, mmu, LD(PtrReg16(HL), Reg8(B)));
 
-    assert_eq!(mmu.read8(0xff90), 1);
+    assert_eq!(mmu.read8(0xff90u16), 1);
   }
 
   #[test]
@@ -1633,7 +1633,7 @@ mod tests {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_a(1);
     cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 2);
+    mmu.write8(0xff90u16, 2);
 
     exec!(cpu, mmu, ALU(Add, Reg8(A), PtrReg16(HL)));
 
@@ -1963,7 +1963,7 @@ mod tests {
   fn opcode_pop() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_sp(1024);
-    mmu.write16(1024, 0xAF);
+    mmu.write16(1024u16, 0xAF);
 
     exec!(cpu, mmu, POP(BC));
 
@@ -1980,7 +1980,7 @@ mod tests {
     exec!(cpu, mmu, PUSH(BC));
 
     assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 0xAF);
+    assert_eq!(mmu.read16(0xff8eu16), 0xAF);
   }
 
   #[test]
@@ -2077,7 +2077,7 @@ mod tests {
     cpu.regs.set_sp(0xff90);
     let (jump, _) = exec!(cpu, mmu, CALL(NotZero, Addr16), arg16 => 123);
     assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 3);
+    assert_eq!(mmu.read16(0xff8eu16), 3);
     assert_eq!(jump, Some(123));
 
     // CALL NZ, N when ZF is set
@@ -2097,7 +2097,7 @@ mod tests {
     let (jump, _) = exec!(cpu, mmu, CALL(Always, Addr16), arg16 => 123);
 
     assert_eq!(cpu.regs.sp(), 0xff8e);
-    assert_eq!(mmu.read16(0xff8e), 3);
+    assert_eq!(mmu.read16(0xff8eu16), 3);
     assert_eq!(jump, Some(123));
   }
 
@@ -2128,13 +2128,13 @@ mod tests {
 
     exec!(cpu, mmu, LD(HighMemImm8, Reg8(A)), arg8 => 0x80);
 
-    assert_eq!(mmu.read8(0xFF80), 1);
+    assert_eq!(mmu.read8(0xFF80u16), 1);
   }
 
   #[test]
   fn opcode_ld_a_ff00_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-    mmu.write8(0xFF80, 1);
+    mmu.write8(0xFF80u16, 1);
 
     exec!(cpu, mmu, LD(Reg8(A), HighMemImm8), arg8 => 0x80);
 
@@ -2149,14 +2149,14 @@ mod tests {
 
     exec!(cpu, mmu, LD(HighMemReg8(C), Reg8(A)));
 
-    assert_eq!(mmu.read8(0xFF80), 1);
+    assert_eq!(mmu.read8(0xFF80u16), 1);
   }
 
   #[test]
   fn opcode_ld_a_c() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_c(0x80);
-    mmu.write8(0xFF80, 1);
+    mmu.write8(0xFF80u16, 1);
 
     exec!(cpu, mmu, LD(Reg8(A), HighMemReg8(C)));
 
@@ -2170,13 +2170,13 @@ mod tests {
 
     exec!(cpu, mmu, LD(Addr16, Reg8(A)), arg16 => 0xff90);
 
-    assert_eq!(mmu.read8(0xff90), 1);
+    assert_eq!(mmu.read8(0xff90u16), 1);
   }
 
   #[test]
   fn opcode_ld_a_n() {
     let (mut cpu, mut mmu) = new_test_cpu();
-    mmu.write16(0xff90, 1);
+    mmu.write16(0xff90u16, 1);
 
     exec!(cpu, mmu, LD(Reg8(A), Addr16), arg16 => 0xff90);
 
@@ -2235,7 +2235,7 @@ mod tests {
   fn opcode_cb_rrc() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_b(0b0000_1010);
-    mmu.write8(0, 0xCB);
+    mmu.write8(0u16, 0xCB);
 
     exec_cb!(cpu, mmu, RRC(Reg8(B)));
 
@@ -2246,7 +2246,7 @@ mod tests {
   fn opcode_cb_rl() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_b(0b0000_0010);
-    mmu.write8(0, 0xCB);
+    mmu.write8(0u16, 0xCB);
 
     exec_cb!(cpu, mmu, RL(Reg8(B)));
 
@@ -2317,11 +2317,11 @@ mod tests {
   fn opcode_cb_swap_d() {
     let (mut cpu, mut mmu) = new_test_cpu();
     cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0x12);
+    mmu.write8(0xff90u16, 0x12);
 
     exec_cb!(cpu, mmu, SWAP(PtrReg16(HL)));
 
-    assert_eq!(mmu.read8(0xff90), 0x21);
+    assert_eq!(mmu.read8(0xff90u16), 0x21);
   }
 
   #[test]
@@ -2366,7 +2366,7 @@ mod tests {
 
     // BIT N, (HL) sets ZF if bit N is zero
     cpu.regs.set_hl(123);
-    mmu.write8(123, 0b0000_0000);
+    mmu.write8(123u16, 0b0000_0000);
     exec_cb!(cpu, mmu, BIT(0, Reg8(B)));
     assert_eq!(cpu.regs.get_flag(ZF), true);
 
@@ -2388,9 +2388,9 @@ mod tests {
 
     // RES N, (HL)
     cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0xFF);
+    mmu.write8(0xff90u16, 0xFF);
     exec_cb!(cpu, mmu, RES(2, PtrReg16(HL)));
-    assert_eq!(mmu.read8(0xff90), 0b1111_1011);
+    assert_eq!(mmu.read8(0xff90u16), 0b1111_1011);
   }
 
   #[test]
@@ -2404,8 +2404,8 @@ mod tests {
 
     // SET N, (HL)
     cpu.regs.set_hl(0xff90);
-    mmu.write8(0xff90, 0x00);
+    mmu.write8(0xff90u16, 0x00);
     exec_cb!(cpu, mmu, SET(2, PtrReg16(HL)));
-    assert_eq!(mmu.read8(0xff90), 0b0000_0100);
+    assert_eq!(mmu.read8(0xff90u16), 0b0000_0100);
   }
 }

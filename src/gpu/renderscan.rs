@@ -1,8 +1,8 @@
 extern crate rand;
 
-use super::registers::{read, Reg};
 use crate::{buffer, mmu};
 use buffer::{random_pixel, Buffer};
+use mmu::{addrs::Addr, MMU};
 use std::sync::Arc;
 
 const TILEMAP_0_OFFSET: u32 = 0x1800;
@@ -10,10 +10,10 @@ const TILEMAP_0_OFFSET: u32 = 0x1800;
 
 pub const VRAM_BEG: usize = 0x8000;
 
-pub fn renderscan(buffer: &Arc<Buffer>, mmu: &dyn mmu::MMU) {
-  let line = read(mmu, Reg::CurrentScanLine) as u32;
-  let scroll_x = read(mmu, Reg::ScrollX) as u32;
-  let scroll_y = read(mmu, Reg::ScrollY) as u32;
+pub fn renderscan<M: MMU>(buffer: &Arc<Buffer>, mmu: &mut M) {
+  let line = mmu.read8(Addr::CurrentScanLine) as u32;
+  let scroll_x = mmu.read8(Addr::ScrollX) as u32;
+  let scroll_y = mmu.read8(Addr::ScrollY) as u32;
 
   // todo check if map 1 is to be used
   let map_offset = TILEMAP_0_OFFSET + ((line + scroll_y) & 255) >> 3;

@@ -1,13 +1,30 @@
+pub mod addrs;
 mod interface;
 pub mod real_mmu;
 
 #[cfg(test)]
 pub mod test_mmu;
 
-pub trait MMU {
-  fn read8(&self, index: usize) -> u8;
-  fn read16(&self, index: usize) -> u16;
+use std::convert::Into;
 
-  fn write8(&mut self, index: usize, value: u8);
-  fn write16(&mut self, index: usize, value: u16);
+pub trait MMU {
+  fn read8<I>(&self, index: I) -> u8
+  where
+    I: Into<usize>,
+    Self: Sized;
+
+  fn read16<I>(&self, index: I) -> u16
+  where
+    I: Into<usize>,
+    Self: Sized;
+
+  fn write8<I>(&mut self, index: I, value: u8)
+  where
+    I: Into<usize>,
+    Self: Sized;
+
+  fn write16<I>(&mut self, index: I, value: u16)
+  where
+    I: Into<usize>,
+    Self: Sized;
 }
