@@ -53,6 +53,34 @@ impl MMU for TestMMU {
     self.mem.insert(index, (value & 0x00FF) as u8);
     self.mem.insert(index + 1, ((value & 0xFF00) >> 8) as u8);
   }
+
+  fn set_flag<I, U>(&mut self, addr: I, mask: U)
+  where
+    I: Into<usize>,
+    U: Into<u8>,
+  {
+    let address = addr.into();
+
+    self.mem.insert(address, self.read8(address) | mask.into());
+  }
+
+  fn unset_flag<I, U>(&mut self, addr: I, mask: U)
+  where
+    I: Into<usize>,
+    U: Into<u8>,
+  {
+    let address: usize = addr.into();
+
+    self.mem.insert(address, self.read8(address) ^ mask.into());
+  }
+
+  fn get_flag<I, U>(&self, addr: I, mask: U) -> bool
+  where
+    I: Into<usize>,
+    U: Into<u8>,
+  {
+    (self.read8(addr.into()) & mask.into()) > 0
+  }
 }
 
 #[cfg(test)]

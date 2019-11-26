@@ -14,6 +14,7 @@ pub fn renderscan<M: MMU>(buffer: &Arc<Buffer>, mmu: &mut M) {
   let line = mmu.read8(Addr::CurrentScanLine) as u32;
   let scroll_x = mmu.read8(Addr::ScrollX) as u32;
   let scroll_y = mmu.read8(Addr::ScrollY) as u32;
+  // let bg_tile = mmu.get_flag(Addr::)
 
   // todo check if map 1 is to be used
   let map_offset = TILEMAP_0_OFFSET + ((line + scroll_y) & 255) >> 3;

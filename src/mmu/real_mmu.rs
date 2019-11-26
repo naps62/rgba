@@ -128,38 +128,6 @@ impl RealMMU {
 
     mmu
   }
-
-  pub fn set_flag(&mut self, address: usize, mask: u8) {
-    let real_address = match address {
-      IO_BEG..=IO_END => address - IO_BEG,
-
-      _ => panic!("Unsupported MMU flag address {:#06x}", address),
-    };
-
-    self.io[real_address] = self.io[real_address] | mask;
-  }
-
-  pub fn unset_flag(&mut self, address: usize, mask: u8) {
-    let real_address = match address {
-      IO_BEG..=IO_END => address - IO_BEG,
-
-      _ => panic!("Unsupported MMU flag address {:#06x}", address),
-    };
-
-    self.io[real_address] = self.io[real_address] ^ mask;
-  }
-
-  pub fn get_flag(&self, address: usize, mask: u8) -> bool {
-    let real_address = match address {
-      IO_BEG..=IO_END => address - IO_BEG,
-
-      _ => panic!("Unsupported MMU flag address {:#06x}", address),
-    };
-
-    let current = self.io[real_address];
-
-    (current & mask) > 0
-  }
 }
 
 use std::convert::Into;
@@ -217,6 +185,56 @@ impl MMU for RealMMU {
 
     self.write8(index, (value & 0x00FF) as u8);
     self.write8(index + 1, ((value & 0xFF00) >> 8) as u8);
+  }
+
+  fn set_flag<I, U>(&mut self, addr: I, mask: U)
+  where
+    I: Into<usize>,
+    U: Into<u8>,
+  {
+    let address: usize = addr.into();
+
+    let real_address = match address {
+      IO_BEG..=IO_END => address - IO_BEG,
+
+      _ => panic!("Unsupported MMU flag address {:#06x}", address),
+    };
+
+    self.io[real_address] = self.io[real_address] | mask.into();
+  }
+
+  fn unset_flag<I, U>(&mut self, addr: I, mask: U)
+  where
+    I: Into<usize>,
+    U: Into<u8>,
+  {
+    let address: usize = addr.into();
+
+    let real_address = match address {
+      IO_BEG..=IO_END => address - IO_BEG,
+
+      _ => panic!("Unsupported MMU flag address {:#06x}", address),
+    };
+
+    self.io[real_address] = self.io[real_address] ^ mask.into();
+  }
+
+  fn get_flag<I, U>(&self, addr: I, mask: U) -> bool
+  where
+    I: Into<usize>,
+    U: Into<u8>,
+  {
+    let address: usize = addr.into();
+
+    let real_address = match address {
+      IO_BEG..=IO_END => address - IO_BEG,
+
+      _ => panic!("Unsupported MMU flag address {:#06x}", address),
+    };
+
+    let current = self.io[real_address];
+
+    (current & mask.into()) > 0
   }
 }
 

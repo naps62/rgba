@@ -27,4 +27,19 @@ pub trait MMU {
   where
     I: Into<usize>,
     Self: Sized;
+
+  fn set_flag<I, U>(&mut self, address: I, mask: U)
+  where
+    I: Into<usize>,
+    U: Into<u8>;
+
+  fn unset_flag<I, U>(&mut self, address: I, mask: U)
+  where
+    I: Into<usize>,
+    U: Into<u8>;
+
+  fn get_flag<I, U>(&self, address: I, mask: U) -> bool
+  where
+    I: Into<usize>,
+    U: Into<u8>;
 }
