@@ -2,11 +2,11 @@ extern crate rand;
 
 use crate::{buffer, mmu};
 use buffer::{random_pixel, Buffer};
-use mmu::{addrs::Addr, MMU};
+use mmu::{addrs::Addr, addrs::LCDControlReg, MMU};
 use std::sync::Arc;
 
 const TILEMAP_0_OFFSET: u32 = 0x1800;
-// const TILEMAP_1_OFFSET: u32 = 0x1C00;
+const TILEMAP_1_OFFSET: u32 = 0x1C00;
 
 pub const VRAM_BEG: usize = 0x8000;
 
@@ -14,10 +14,16 @@ pub fn renderscan<M: MMU>(buffer: &Arc<Buffer>, mmu: &mut M) {
   let line = mmu.read8(Addr::CurrentScanLine) as u32;
   let scroll_x = mmu.read8(Addr::ScrollX) as u32;
   let scroll_y = mmu.read8(Addr::ScrollY) as u32;
-  // let bg_tile = mmu.get_flag(Addr::)
+  let bg_map = mmu.get_flag(Addr::LCDControl, LCDControlReg::BGTileMap);
+  // let bg_set = mmu.get_flag(Addr::LCDControl, LCDControlReg::BGTileSet);
 
-  // todo check if map 1 is to be used
-  let map_offset = TILEMAP_0_OFFSET + ((line + scroll_y) & 255) >> 3;
+  let mut map_offset = if bg_map {
+    TILEMAP_1_OFFSET
+  } else {
+    TILEMAP_0_OFFSET
+  };
+
+  map_offset = map_offset + ((line + scroll_y) & 255) >> 3;
 
   let mut line_offset = scroll_x >> 3;
 
@@ -30,6 +36,10 @@ pub fn renderscan<M: MMU>(buffer: &Arc<Buffer>, mmu: &mut M) {
 
   // todo
   // if (tile 1 && tile < 128) {tile_index +=256}
+  // todo check if map 1 is to be used
+  // if bg_set && tile_index < 128 {
+  //   tile_index += 256
+  // }
 
   for screen_x in 0..160 {
     let _tile_pixel = mmu.read16(tile_index as usize);

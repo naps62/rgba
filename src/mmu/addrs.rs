@@ -22,3 +22,9 @@ impl From<Addr> for usize {
     addr as usize
   }
 }
+
+impl From<LCDControlReg> for u8 {
+  fn from(addr: LCDControlReg) -> Self {
+    addr as u8
+  }
+}
