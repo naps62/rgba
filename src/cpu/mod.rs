@@ -36,13 +36,13 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    // println!("{:#04x}: {:?}", current_pc, opcode);
+    println!("{:#04x}: {:?} {}", current_pc, opcode, self.cycles);
 
     let (jump_to, cycles) = self.exec_opcode(opcode, current_pc, mmu);
 
     let new_pc = match jump_to {
       Some(new_pc) => {
-        // println!("   JUMP: {:#02x}", new_pc);
+        //   println!("   JUMP: {:#02x}", new_pc);
         new_pc
       }
       None => current_pc + opcodes::op_size(opcode),

@@ -1,5 +1,4 @@
 pub mod addrs;
-mod interface;
 pub mod real_mmu;
 
 #[cfg(test)]

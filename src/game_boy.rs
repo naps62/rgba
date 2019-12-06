@@ -1,5 +1,6 @@
 extern crate crossbeam_channel;
 
+use super::gpu::renderer;
 use super::mmu::real_mmu::RealMMU;
 use super::{buffer::Buffer, cpu::CPU, display::Display, gpu::GPU, input::Input};
 use std::sync::Arc;
@@ -7,7 +8,7 @@ use std::sync::Arc;
 #[allow(dead_code)]
 pub struct GameBoy {
   cpu: CPU,
-  gpu: GPU,
+  gpu: GPU<RealMMU, renderer::renderscan::Renderscan>,
   mmu: RealMMU,
   display: Display,
   input: Input,
@@ -23,7 +24,10 @@ impl GameBoy {
     let mmu = RealMMU::new(true, cartridge);
 
     let cpu = CPU::new();
-    let gpu = GPU::new(Arc::clone(&buffer));
+
+    let renderer = renderer::renderscan::Renderscan::new();
+    let gpu = GPU::new(Arc::clone(&buffer), renderer);
+
     let display = Display::new(input_sender, Arc::clone(&buffer));
     let input = Input::new(input_receiver);
 
@@ -39,7 +43,7 @@ impl GameBoy {
   pub fn run(&mut self) {
     loop {
       self.cpu.exec(&mut self.mmu);
-      self.gpu.step(self.cpu.last_instr_cycles, &mut self.mmu);
+      // self.gpu.step(self.cpu.last_instr_cycles, &mut self.mmu);
     }
   }
 }
