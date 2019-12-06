@@ -1,7 +1,5 @@
-#![feature(associated_type_bounds)]
-
 extern crate rand;
-pub mod renderer;
+mod renderscan;
 mod step;
 
 use crate::buffer::Buffer;
@@ -9,28 +7,24 @@ use crate::mmu::MMU;
 use std::sync::Arc;
 use step::Step;
 
-pub struct GPU<M, R> {
+pub struct GPU {
   step: Step,
   buffer: Arc<Buffer>,
-  renderer: R,
-  mmu: std::marker::PhantomData<M>,
 }
 
-impl<M: MMU, R: renderer::Interface<M>> GPU<M, R> {
-  pub fn new(buffer: Arc<Buffer>, renderer: R) -> GPU<M, R> {
+impl GPU {
+  pub fn new(buffer: Arc<Buffer>) -> GPU {
     GPU {
       step: Step::new(),
       buffer: buffer,
-      renderer: renderer,
-      mmu: std::marker::PhantomData,
     }
   }
 
-  pub fn step(&mut self, cycles: u8, mmu: &mut M) {
+  pub fn step<M: MMU>(&mut self, cycles: u8, mmu: &mut M) {
     use step::Result::*;
 
     match self.step.calc(cycles, mmu) {
-      Renderscan => (),
+      Renderscan => renderscan::renderscan(&self.buffer, mmu),
       Noop => (),
     }
   }

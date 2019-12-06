@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Addr {
   LCDControl = 0xFF40,
   ScrollY = 0xFF42,

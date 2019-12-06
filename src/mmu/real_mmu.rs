@@ -14,6 +14,10 @@ const BOOT_BEG: usize = 0x0000;
 const BOOT_END: usize = 0x00ff;
 // const BOOT_RANGE: MemRange = (BOOT_BEG, BOOT_END);
 
+const INTERRUPT_BEG: usize = 0x0000;
+const INTERRUPT_END: usize = 0x00ff;
+const INTERRUPT_RANGE: MemRange = (INTERRUPT_BEG, INTERRUPT_END);
+
 // ROM, bank 0
 const ROM0_BEG: usize = 0x0000;
 const ROM0_END: usize = 0x3fff;
@@ -76,9 +80,8 @@ const ZRAM_BEG: usize = 0xff80;
 const ZRAM_END: usize = 0xfffe;
 const ZRAM_RANGE: MemRange = (ZRAM_BEG, ZRAM_END);
 
-// const INTERRUPT: usize = 0xffff;
-
 const FLAG_BOOT: usize = 0xff50;
+const FLAG_INTERRUPT: usize = 0xffff;
 
 macro_rules! declare_mem_bank {
   ($range:ident) => {
@@ -95,12 +98,14 @@ macro_rules! init_mem_bank {
 pub struct RealMMU {
   boot: Vec<u8>,
   cartridge: Vec<u8>,
+  interrupts: declare_mem_bank!(INTERRUPT_RANGE),
   vram: declare_mem_bank!(VRAM_RANGE),
   eram: declare_mem_bank!(ERAM_RANGE),
   wram0: declare_mem_bank!(WRAM0_RANGE),
   wramx: declare_mem_bank!(WRAMX_RANGE),
   io: declare_mem_bank!(IO_RANGE),
   zram: declare_mem_bank!(ZRAM_RANGE),
+  flag_interrupt: u8,
 }
 
 impl RealMMU {
@@ -114,12 +119,14 @@ impl RealMMU {
     let mut mmu = RealMMU {
       boot: boot,
       cartridge: cartridge,
+      interrupts: init_mem_bank!(INTERRUPT_RANGE),
       vram: init_mem_bank!(VRAM_RANGE),
       eram: init_mem_bank!(ERAM_RANGE),
       wram0: init_mem_bank!(WRAM0_RANGE),
       wramx: init_mem_bank!(WRAMX_RANGE),
       io: init_mem_bank!(IO_RANGE),
       zram: init_mem_bank!(ZRAM_RANGE),
+      flag_interrupt: 0u8,
     };
 
     if boot_rom {
@@ -141,6 +148,7 @@ impl MMU for RealMMU {
 
     match index {
       BOOT_BEG..=BOOT_END if self.get_flag(FLAG_BOOT, 0x01) => self.boot[index],
+      INTERRUPT_BEG..=INTERRUPT_END if !self.get_flag(FLAG_BOOT, 0x01) => self.interrupts[index],
       ROM0_BEG..=ROM0_END => self.cartridge[index],
       ROMX_BEG..=ROMX_END => self.cartridge[index - ROMX_BEG],
       ERAM_BEG..=ERAM_END => self.eram[index - ERAM_BEG],
@@ -149,6 +157,7 @@ impl MMU for RealMMU {
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG],
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG],
       IO_BEG..=IO_END => self.zram[index - IO_BEG],
+      FLAG_INTERRUPT => self.flag_interrupt,
       _ => panic!("Unsupported MMU read8 to address 0x{:x}", index),
     }
   }
@@ -168,11 +177,13 @@ impl MMU for RealMMU {
     let index: usize = idx.into();
 
     match index {
+      INTERRUPT_BEG..=INTERRUPT_END => self.interrupts[index] = value,
       VRAM_BEG..=VRAM_END => self.vram[index - VRAM_BEG] = value,
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG] = value,
       IO_BEG..=IO_END => self.zram[index - IO_BEG] = value,
+      FLAG_INTERRUPT => self.flag_interrupt = value,
       _ => panic!("Unsupported MMU write8 to address {:#06x}", index),
     };
   }

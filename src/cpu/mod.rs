@@ -36,7 +36,15 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    println!("{:#04x}: {:?} {}", current_pc, opcode, self.cycles);
+    if current_pc > 0x00fe {
+      println!(
+        "{:#04x}: {:x} {:x} {:?}",
+        current_pc,
+        byte,
+        self.read_arg8(mmu),
+        opcode,
+      );
+    }
 
     let (jump_to, cycles) = self.exec_opcode(opcode, current_pc, mmu);
 
