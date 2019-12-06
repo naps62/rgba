@@ -36,23 +36,10 @@ impl CPU {
     let byte = mmu.read8(current_pc as usize);
     let opcode = opcodes::decode(byte);
 
-    if current_pc > 0x00fe {
-      println!(
-        "{:#04x}: {:x} {:x} {:?}",
-        current_pc,
-        byte,
-        self.read_arg8(mmu),
-        opcode,
-      );
-    }
-
     let (jump_to, cycles) = self.exec_opcode(opcode, current_pc, mmu);
 
     let new_pc = match jump_to {
-      Some(new_pc) => {
-        //   println!("   JUMP: {:#02x}", new_pc);
-        new_pc
-      }
+      Some(new_pc) => new_pc,
       None => current_pc + opcodes::op_size(opcode),
     };
 
@@ -352,6 +339,7 @@ impl CPU {
       RET(Always) => (Some(self.pop(mmu)), 16),
 
       RETI => {
+        println!("RETI");
         self.interrupts = 1;
 
         (Some(self.pop(mmu)), 16)
@@ -471,12 +459,14 @@ impl CPU {
       }
 
       DI => {
+        println!("DI");
         self.interrupts = 0;
 
         (None, 4)
       }
 
       EI => {
+        println!("EI");
         self.interrupts = 1;
 
         (None, 4)

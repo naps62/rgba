@@ -5,6 +5,8 @@ use image::{ImageBuffer, Rgba, RgbaImage};
 use rand::random;
 use std::sync::{Mutex, MutexGuard};
 
+pub type Pixel = Rgba<u8>;
+
 pub struct Buffer {
   data: Mutex<RgbaImage>,
 }
@@ -36,5 +38,5 @@ impl Buffer {
 }
 
 pub fn random_pixel() -> Rgba<u8> {
-  Rgba::<u8>([random(), random(), random(), random()])
+  Rgba::<u8>([random(), random(), random(), 255])
 }

@@ -147,8 +147,8 @@ impl MMU for RealMMU {
     let index: usize = idx.into();
 
     match index {
-      BOOT_BEG..=BOOT_END if self.get_flag(FLAG_BOOT, 0x01) => self.boot[index],
-      INTERRUPT_BEG..=INTERRUPT_END if !self.get_flag(FLAG_BOOT, 0x01) => self.interrupts[index],
+      BOOT_BEG..=BOOT_END if self.read8(FLAG_BOOT) == 1 => self.boot[index],
+      INTERRUPT_BEG..=INTERRUPT_END if self.read8(FLAG_BOOT) > 0 => self.interrupts[index],
       ROM0_BEG..=ROM0_END => self.cartridge[index],
       ROMX_BEG..=ROMX_END => self.cartridge[index - ROMX_BEG],
       ERAM_BEG..=ERAM_END => self.eram[index - ERAM_BEG],
@@ -156,7 +156,7 @@ impl MMU for RealMMU {
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG],
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG],
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG],
-      IO_BEG..=IO_END => self.zram[index - IO_BEG],
+      IO_BEG..=IO_END => self.io[index - IO_BEG],
       FLAG_INTERRUPT => self.flag_interrupt,
       _ => panic!("Unsupported MMU read8 to address 0x{:x}", index),
     }
@@ -182,7 +182,7 @@ impl MMU for RealMMU {
       WRAM0_BEG..=WRAM0_END => self.wram0[index - WRAM0_BEG] = value,
       WRAMX_BEG..=WRAMX_END => self.wramx[index - WRAMX_BEG] = value,
       ZRAM_BEG..=ZRAM_END => self.zram[index - ZRAM_BEG] = value,
-      IO_BEG..=IO_END => self.zram[index - IO_BEG] = value,
+      IO_BEG..=IO_END => self.io[index - IO_BEG] = value,
       FLAG_INTERRUPT => self.flag_interrupt = value,
       _ => panic!("Unsupported MMU write8 to address {:#06x}", index),
     };
